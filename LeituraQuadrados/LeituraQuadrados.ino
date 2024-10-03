@@ -2,8 +2,11 @@
 
 int Sensor[QTSensores] = {0}; // Inicializa zerando tudo
 bool SensorBIN[QTSensores] = {0};
+int HistoricoLeituras[QTSensores][NumLeituras];  // Armazena as últimas 5 leituras de cada sensor
+int IndiceLeitura = 0;                    // Índice de controle para o histórico de leituras
 bool Mandar_Mux_Bin[4] = {0};
 int corte[QTSensores] = {0};
+
 float erro = 0, erroA = 0;
 int VeloE, VeloD; // valores a serem mandados no motor
 //////////////////////////////////////// PID ////////////////////////////////////////
@@ -23,9 +26,10 @@ int leAntLeft = 0, leAntRight = 0;
 int QtQuadradoLeft = 0, QtQuadradoRight = 0;
 bool encruzilhada = false; // Flag para indicar se encontrou encruzilhada
 bool deveVirar = false; // Flag para indicar se deve virar na próxima encruzilhada
+bool ladoVirar = 0;
 ////////////////////////////////////////////////////////////////////////////////////
 int Estado = 0;
-bool leAntLeft 
+
 void Leitura() {
   for (int i = 0; i < QTSensores; i++) {
       // Configura os pinos do MUX com base nos bits
@@ -39,51 +43,50 @@ void Leitura() {
       }
 
       // Lê o valor do sensor através do MUX
-      Sensor[i] = analogRead(MUX_SIG);
+      int leituraAtual = analogRead(MUX_SIG);
+
+      // Atualiza o histórico de leituras do sensor 'i'
+      HistoricoLeituras[i][IndiceLeitura] = leituraAtual;
+
+      // Calcula a média das 5 últimas leituras
+      int soma = 0;
+      for (int k = 0; k < NumLeituras; k++) {
+          soma += HistoricoLeituras[i][k];
+      }
+      Sensor[i] = soma / NumLeituras; // Armazena a média no vetor Sensor
   }
+
+  // Atualiza o índice de controle para o histórico de leituras (circular)
+  IndiceLeitura = (IndiceLeitura + 1) % NumLeituras;
+
   // Impressão de dados para depuração
-  ImprimirSensores();
+  ImprimirSensores(1);
+
   // Funções auxiliares para processamento de dados
   Discretiza();
 }
-void CalculaErro() { // Negativo = mais para a esquerda, positivo = mais para a direita
-  if ((SensorBIN[0] == PRETO) && (SensorBIN[1] == PRETO) && (SensorBIN[2] == BRANCO) &&
-      (SensorBIN[3] == PRETO) && (SensorBIN[4] == PRETO)) {
-      erro = 0;
-  } else if ((SensorBIN[0] == PRETO) && (SensorBIN[1] == BRANCO) && (SensorBIN[2] == BRANCO) &&
-              (SensorBIN[3] == PRETO) && (SensorBIN[4] == PRETO)) {
-      erro = -1;
-  } else if ((SensorBIN[0] == PRETO) && (SensorBIN[1] == BRANCO) && (SensorBIN[2] == PRETO) &&
-              (SensorBIN[3] == PRETO) && (SensorBIN[4] == PRETO)) {
-      erro = -2;
-  } else if ((SensorBIN[0] == BRANCO) && (SensorBIN[1] == BRANCO) && (SensorBIN[2] == PRETO) &&
-              (SensorBIN[3] == PRETO) && (SensorBIN[4] == PRETO)) {
-      erro = -2.5; 
-  } else if ((SensorBIN[0] == BRANCO) && (SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) &&
-              (SensorBIN[3] == PRETO) && (SensorBIN[4] == PRETO)) {
-      erro = -3;
-  } else if ((SensorBIN[0] == BRANCO) && (SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) &&
-              (SensorBIN[3] == PRETO) && (SensorBIN[4] == BRANCO)) {
-      erro = -5;
-  } else if ((SensorBIN[0] == PRETO) && (SensorBIN[1] == PRETO) && (SensorBIN[2] == BRANCO) &&
-              (SensorBIN[3] == BRANCO) && (SensorBIN[4] == PRETO)) {
-      erro = 1;
-  } else if ((SensorBIN[0] == PRETO) && (SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) &&
-              (SensorBIN[3] == BRANCO) && (SensorBIN[4] == PRETO)) {
-      erro = 2;
-  } else if ((SensorBIN[0] == PRETO) && (SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) &&
-              (SensorBIN[3] == BRANCO) && (SensorBIN[4] == BRANCO)) {
-      erro = 2.5;
-  } else if ((SensorBIN[0] == PRETO) && (SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) &&
-              (SensorBIN[3] == PRETO) && (SensorBIN[4] == BRANCO)) {
-      erro = 3;
-  } else if ((SensorBIN[0] == BRANCO) && (SensorBIN[1] == BRANCO) && (SensorBIN[2] == PRETO) &&
-              (SensorBIN[3] == PRETO) && (SensorBIN[4] == BRANCO)) {
-      erro = 5;
-  } else {
-      erro = erroA; // Assume que erroA é uma variável já definida
+void ImprimirSensores(int Antropofagico) {
+  if (Antropofagico == 1){
+    for (int i = 0; i < QTSensores; i++) {
+        Serial.print(Sensor[i]);
+        if (i < QTSensores - 1) {
+            Serial.print("| "); // Adiciona vírgula entre os sensores
+        }
+    }
   }
+  else if (Antropofagico == 2){
+    for (int i = 0; i < QTSensores; i++) {
+      Serial.print(SensorBIN[i]);
+      if (i < QTSensores - 1) {
+          Serial.print("| "); // Adiciona vírgula entre os sensores
+      }
+    }
+  }
+  //Serial.print(" | Erro: ");
+  //Serial.println(erro); // Imprime o valor do erro
+  Serial.println();
 }
+
 void Discretiza() {
   for (int i = 0; i < QTSensores; i++) {
       // Discretiza o valor com base no valor de corte
@@ -94,16 +97,84 @@ void Discretiza() {
       }
   }
 }
-void ImprimirSensores() {
-  for (int i = 0; i < QTSensores; i++) {
-      Serial.print(Sensor[i]);
-      if (i < QTSensores - 1) {
-          Serial.print("| "); // Adiciona vírgula entre os sensores
-      }
+
+void CalculaErro() { // Negativo = mais para a esquerda, positivo = mais para a direita
+  // Quando o sensor central (SensorBIN[5]) detecta branco
+  if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+      (SensorBIN[4] == PRETO) && (SensorBIN[5] == BRANCO) && (SensorBIN[6] == PRETO) && 
+      (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+      erro = 0;
+  
+  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+             (SensorBIN[4] == BRANCO) && (SensorBIN[5] == BRANCO) && (SensorBIN[6] == PRETO) &&
+             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+      erro = -0.5;
+  } else if ( (SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+             (SensorBIN[4] == BRANCO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) ) {
+      erro = -1;
+  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == BRANCO) &&
+             (SensorBIN[4] == BRANCO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+      erro = -1.5;
+  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == BRANCO) &&
+             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+      erro = -2;
+  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == BRANCO) && (SensorBIN[3] == BRANCO) &&
+             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+      erro = -2.5;
+  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == BRANCO) && (SensorBIN[3] == PRETO) &&
+             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+      erro = -3;
+  }else if ((SensorBIN[1] == BRANCO) && (SensorBIN[2] == BRANCO) && (SensorBIN[3] == PRETO) &&
+             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+      erro = -3.5;
+  }else if ((SensorBIN[1] == BRANCO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+      erro = -4;
+  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+             (SensorBIN[4] == PRETO) && (SensorBIN[5] == BRANCO) && (SensorBIN[6] == BRANCO) &&
+             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+      erro = 0.5;
+  } else if ( (SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == BRANCO) &&
+             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) ) {
+      erro = 1;
+  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == BRANCO) &&
+             (SensorBIN[7] == BRANCO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+      erro = 1.5;
+  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+             (SensorBIN[7] == BRANCO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+      erro = 2;
+  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+             (SensorBIN[7] == BRANCO) && (SensorBIN[8] == BRANCO) && (SensorBIN[9] == PRETO)) {
+      erro = 2.5;
+  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+             (SensorBIN[7] == PRETO) && (SensorBIN[8] == BRANCO) && (SensorBIN[9] == PRETO)) {
+      erro = 3;
+  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+             (SensorBIN[7] == PRETO) && (SensorBIN[8] == BRANCO) && (SensorBIN[9] == BRANCO)) {
+      erro = 3.5;
+  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == BRANCO)) {
+      erro = 4;
+  // Caso nenhum dos padrões seja detectado, manter erro anterior
+  } else {
+      erro = erroA; // Assume que erroA é uma variável definida anteriormente
   }
-  Serial.print(" | Erro: ");
-  Serial.println(erro); // Imprime o valor do erro
 }
+
 
 void CalculaPID() {
   P = erro * Kp;
@@ -397,11 +468,7 @@ void loop() {
     // Se o robô encontrou uma encruzilhada
     if (deveVirar) {
       // Se a flag "deveVirar" está ativa, o robô deve virar agora
-      if (ladoVirar == 0) { /// Para a esquerda 
-        VirarEsquerda();
-      } else if (ladoVirar == 1) { // Para a direita
-        VirarDireita();
-      }
+      Virar (ladoVirar); // 0 para esquerda, e 1 para direita
       deveVirar = false; // Resetamos a flag após a virada
     } else {
       // Se há quadrados para processar à esquerda
