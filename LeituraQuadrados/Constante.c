@@ -33,6 +33,9 @@ const int MUX_S[4] = {1, 1, 1, 1}; // Inicializa o array com valores
 #define PWME 80
 #define PWMD 80
 #define MAXR 80
+
+#define re 1
+#define PraFrente 0
 //////////////////////////////////////// AUXLIARES ////////////////////////////////////////
 #define Parar 0
 #define Frente 1
