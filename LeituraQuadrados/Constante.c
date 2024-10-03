@@ -18,6 +18,7 @@ const int Preto = 0;
 const int MUX_S[4] = {1, 1, 1, 1}; // Inicializa o array com valores
 #define BRANCO 0
 #define PRETO 1
+#define NumLeituras 5 // Número de leituras para cálculo da média
 //////////////////////////////////////// Square ////////////////////////////////////////
 #define BUFFER_SIZE 5
 
