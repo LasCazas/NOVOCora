@@ -14,8 +14,8 @@ const int Preto = 0;
 #define BotStart 1
 //////////////////////////////////////// SENSOR ////////////////////////////////////////
 #define QTSensores 11
-#define MUX_SIG 1
-const int MUX_S[4] = {1, 1, 1, 1}; // Inicializa o array com valores
+#define MUX_SIG 13
+const int MUX_S[4] = {12, 14, 27, 26}; // Inicializa o array com valores
 #define BRANCO 0
 #define PRETO 1
 //////////////////////////////////////// MOTOR ////////////////////////////////////////
