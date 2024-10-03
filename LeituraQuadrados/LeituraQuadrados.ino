@@ -193,12 +193,7 @@ void CalculaPID() {
 void AutoTunePID() {
   if (autoTuningEnabled && (millis() - lastTuneTime > tuneInterval)) {
       // Ajusta Kp, Ki, Kd com base na resposta do sistema
-      if (erro > 0) {
-          Kp += 0.1; // Aumenta Kp se o erro for positivo
-      } else {
-          Kp -= 0.1; // Diminui Kp se o erro for negativo
-      }
-
+      Kp += (erro > 0) ? 0.1 : -0.1; // Ajusta Kp conforme o erro
       Ki += 0.01; // Aumenta Ki
       Kd += 0.001; // Aumenta Kd
 
@@ -210,34 +205,59 @@ void AutoTunePID() {
       lastTuneTime = millis(); // Atualiza o tempo da última modificação
   }
 }
-
-void Seguir() {
+void Seguir(bool Sentido) {
     CalculaErro();
     CalculaPID();
-    AutoTunePID(); // Chama o auto-tuning
+    if (Sentido == PraFrente){
+      AutoTunePID(); // Chama o auto-tuning
 
-    if (PID < -MAXR) { PID = -MAXR; }
-    if (PID > MAXR) { PID = MAXR; }
-    
-    if (PID > 0) { // Direita
-        VeloE = PWME;
-        VeloD = PWMD - PID;
-    } else { // Esquerda
-        VeloE = PWME - abs(PID);
-        VeloD = PWMD;
+      PID = constrain(PID, -MAXR, MAXR); // Limita o PID
+      
+      if (PID > 0) { // Direita
+          VeloE = PWME;
+          VeloD = PWMD - PID;
+      } else { // Esquerda
+          VeloE = PWME - abs(PID);
+          VeloD = PWMD;
+      }
+      
+      VeloD = constrain(VeloD, 0, PWMD);
+      VeloE = constrain(VeloE, 0, PWME);
+
+      digitalWrite(IN1, HIGH);
+      digitalWrite(IN2, LOW);
+      analogWrite(ENA, VeloE);
+      
+      // Motor_D
+      digitalWrite(IN3, HIGH);
+      digitalWrite(IN4, LOW);
+      analogWrite(ENB, VeloD);
+    } else if (Sentido == re ){
+      if (PID < -MAXR) { PID = -MAXR; }
+      if (PID > MAXR) { PID = MAXR; }
+      
+      if (PID > 0) { // Direita
+          VeloE = PWME- PID;
+          VeloD = PWMD ;
+      } else { // Esquerda
+          VeloE = PWME ;
+          VeloD = PWMD- abs(PID);
+      }
+      VeloE -= 10;
+      VeloD -= 10;
+      
+      if (VeloD < 0) { VeloD = 0; }
+      if (VeloE < 0) { VeloE = 0; }
+      //inverte para ele ir para traz
+      digitalWrite(IN1, LOW);
+      digitalWrite(IN2, HIGH);
+      analogWrite(ENA, VeloE);
+      
+      // Motor_D
+      digitalWrite(IN3, LOW);
+      digitalWrite(IN4, HIGH);
+      analogWrite(ENB, VeloD);
     }
-    
-    if (VeloD < 0) { VeloD = 0; }
-    if (VeloE < 0) { VeloE = 0; }
-
-    digitalWrite(IN1, HIGH);
-    digitalWrite(IN2, LOW);
-    analogWrite(ENA, VeloE);
-    
-    // Motor_D
-    digitalWrite(IN3, HIGH);
-    digitalWrite(IN4, LOW);
-    analogWrite(ENB, VeloD);
 }
 
 void Calibracao() {
@@ -463,36 +483,67 @@ void loop() {
   if (DetectarEncruzilhada()) {
     encruzilhada = true; // Marca que uma encruzilhada foi encontrada
   }
+  
+  //////////////////////////////////////// Estado 0 ///////////////////////////////////////////////////////////////////
+  if (Estado == 0) {
+    if (encruzilhada) {
+      // Se o robô encontrou uma encruzilhada
+      if (deveVirar) {
+        // Se a flag "deveVirar" está ativa, o robô deve virar agora
+        Virar(ladoVirar); // 0 para esquerda, e 1 para direita
+        deveVirar = false; // Resetamos a flag após a virada
+      } else {
+        // Se há quadrados para processar à esquerda
+        if (QtQuadradoLeft > 0) {
+          QtQuadradoLeft--;
+          ladoVirar = 0; // Sinaliza que o robô deve virar para a esquerda
+        }
 
-  if (encruzilhada) {
-    // Se o robô encontrou uma encruzilhada
-    if (deveVirar) {
-      // Se a flag "deveVirar" está ativa, o robô deve virar agora
-      Virar (ladoVirar); // 0 para esquerda, e 1 para direita
-      deveVirar = false; // Resetamos a flag após a virada
+        // Se há quadrados para processar à direita
+        if (QtQuadradoRight > 0) {
+          QtQuadradoRight--;
+          ladoVirar = 1; // Sinaliza que o robô deve virar para a direita
+        }
+
+        if (QtQuadradoLeft == 0 && QtQuadradoRight == 0) {
+          // Se o contador de quadrados chegou a zero para ambos os lados,
+          // sinaliza que o robô deve virar na próxima encruzilhada
+          deveVirar = true;
+        }
+      }
+
+      encruzilhada = false; // Reseta a flag de encruzilhada
     } else {
-      // Se há quadrados para processar à esquerda
+      // Lógica para execução da marcha à ré ao detectar duas marcas brancas
+      if ((QtQuadradoRight > 0 && QtQuadradoLeft > 0) && (SensorBIN[0] == PRETO && SensorBIN[10] == PRETO)) {
+        Estado = re;
+        QtQuadradoLeft = 0;
+        QtQuadradoRight = 0;
+      } else {
+        // Continua seguindo a linha normalmente se não houver encruzilhada
+        Seguir(PraFrente);
+      }
+    }
+  }
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  
+  if (Estado == re) {
+    if (encruzilhada) {
       if (QtQuadradoLeft > 0) {
         QtQuadradoLeft--;
-        ladoVirar = 0; // Sinaliza que o robô deve virar para a esquerda
+        Virar(0); // VIRAR À ESQUERDA
       }
 
       // Se há quadrados para processar à direita
       if (QtQuadradoRight > 0) {
         QtQuadradoRight--;
-        ladoVirar = 1; // Sinaliza que o robô deve virar para a direita
+        Virar(1); // VIRAR À DIREITA
       }
 
-      if (QtQuadradoLeft == 0 && QtQuadradoRight == 0) {
-        // Se o contador de quadrados chegou a zero para ambos os lados,
-        // sinaliza que o robô deve virar na próxima encruzilhada
-        deveVirar = true;
-      }
+      encruzilhada = false; // Reseta a flag de encruzilhada
+    } else {
+      // Volta de ré
+      Seguir(re);
     }
-
-    encruzilhada = false; // Reseta a flag de encruzilhada
-  } else {
-    // Continua seguindo a linha normalmente se não houver encruzilhada
-    Seguir();
-  }
-}
+  } // fim do Estado re
+} // fim do loop
