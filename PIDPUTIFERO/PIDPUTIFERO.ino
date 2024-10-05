@@ -12,7 +12,7 @@ float erro = 0, erroA = 0;
 int VeloE, VeloD;
 unsigned long CalibraInterval = 0; // Tempo de inicia de calibracao
 //////////////////////////////////////// PID ////////////////////////////////////////
-float Kp = 1.0, Ki = 0.1, Kd = 0.01; // Parâmetros do PID
+float Kp = 5.0, Ki = 0, Kd = 0.0; // Parâmetros do PID
 float targetValue = 0; // Valor alvo
 bool autoTuningEnabled = false; // Habilitar/desabilitar auto-tuning
 unsigned long lastTuneTime = 0; // Tempo da última atualização de tuning
@@ -50,7 +50,7 @@ void Leitura() {
   IndiceLeitura = (IndiceLeitura + 1) % NumLeituras;
 
   // Impressão de dados para depuração
-  ImprimirSensores(1);
+  ImprimirSensores(2);
 
   // Funções auxiliares para processamento de dados
   Discretiza();
@@ -73,7 +73,7 @@ void ImprimirSensores(int Antropofagico) {
       }
     }
   }
-  //Serial.print(" | Erro: ");
+  Serial.print(" | VeloE: " + String(VeloE) + " | VeloD: " + String(VeloD));
   //Serial.println(erro); // Imprime o valor do erro
   Serial.println();
 }
@@ -230,12 +230,13 @@ void Seguir() {
     digitalWrite(IN3, HIGH);
     digitalWrite(IN4, LOW);
     analogWrite(ENB, VeloD);
+    //Serial.println("" + )
 }
 
 void Calibracao() {
     const unsigned long tempoCalibracao = 5000; // Tempo total de calibração em milissegundos
     unsigned long tempoInicial = millis(); // Captura o tempo inicial
-    const unsigned long IntervaloTempoBUZZ = 500;
+    const unsigned long IntervaloTempoBUZZ = 1000;
     // Arrays para armazenar os 5 maiores e 5 menores valores de cada sensor
     int maiores[QTSensores][5] = {0}; // Inicializa com 0
     int menores[QTSensores][5]; // Inicializa como não definidos
@@ -248,7 +249,7 @@ void Calibracao() {
     // Realiza as leituras por 5 segundos
     while (millis() - tempoInicial < tempoCalibracao) {
         if (millis() - CalibraInterval >= IntervaloTempoBUZZ ){
-          tone(BUZZ,440,200); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
+          tone(BUZZ,20,300); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
           CalibraInterval = millis();
         }
         for (int sensorIndex = 0; sensorIndex < QTSensores; sensorIndex++) {
@@ -264,9 +265,10 @@ void Calibracao() {
 
             // Lê o valor do sensor
             int valorLido = analogRead(MUX_SIG);
+            Serial.print("|" + String(maiores[sensorIndex][0]));
 
             // Atualiza os 5 maiores
-            if (valorLido > menores[sensorIndex][0]) {
+            if (valorLido < menores[sensorIndex][0]) {
                 menores[sensorIndex][0] = valorLido;
                 // Bubble sort simples
                 for (int k = 0; k < 4; k++) {
@@ -279,7 +281,7 @@ void Calibracao() {
             }
 
             // Atualiza os 5 menores
-            if (valorLido < maiores[sensorIndex][4]) {
+            if (valorLido > maiores[sensorIndex][4]) {
                 maiores[sensorIndex][4] = valorLido;
                 // Bubble sort simples
                 for (int k = 4; k > 0; k--) {
@@ -291,6 +293,7 @@ void Calibracao() {
                 }
             }
         }
+        Serial.println();
     }
 
     // Calcula a mediana dos 5 maiores e 5 menores para cada sensor
@@ -302,7 +305,7 @@ void Calibracao() {
         corte[sensorIndex] = (medianaMaiores + medianaMenores) / 2;
 
         // Imprime os resultados de cada sensor
-        Serial.print("Sensor " + String(sensorIndex) + " - Mediana Maiores: " + String(medianaMaiores) + ", Mediana Menores: " + String(medianaMenores) + ", Corte: " + String(corte[sensorIndex]) + "\n");
+        Serial.print("Sensor " + String(sensorIndex) + " - Mediana Maiores: " + String(medianaMenores) + ", Mediana Menores: " + String(medianaMaiores) + ", Corte: " + String(corte[sensorIndex]) + "\n");
     }
 }
 float calcularMediana(int valores[], int tamanho) {
@@ -336,9 +339,9 @@ void setup() {
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
   pinMode(ENB, OUTPUT);
-  
+  pinMode(STBY, OUTPUT);
   Serial.begin(115200);
-  /*
+  
   pinMode(BotCalibra, INPUT);
   pinMode(BotStart, INPUT);
   pinMode(BUZZ, OUTPUT);
@@ -356,9 +359,9 @@ void setup() {
   tone(BUZZ,500,100); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
   // Aguarda pressionar o botão de iniciar
   Serial.println("Pressione o botão para iniciar...");
-  while (digitalRead(BotStart) == LOW) {
+  while (digitalRead(BotCalibra) == LOW) {
       // Aguarda até que o botão seja pressionado
-  }*/
+  }
   Serial.println("3!...");
   delay(1000);
   Serial.println("2!...");
@@ -366,10 +369,11 @@ void setup() {
   Serial.println("1!...");
   delay(1000);
   Serial.println("======= avua fi!======");
-  
+  digitalWrite(STBY,HIGH);
 }
 
 void loop() {
+
   Leitura();
   Seguir(); // Estado padrão ele segue a linha
 }
