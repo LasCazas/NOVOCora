@@ -10,6 +10,7 @@ int corte[QTSensores] = {0};
 int P = 0, I = 0, D = 0, PID = 0;
 float erro = 0, erroA = 0;
 int VeloE, VeloD;
+unsigned long CalibraInterval = 0; // Tempo de inicia de calibracao
 //////////////////////////////////////// PID ////////////////////////////////////////
 float Kp = 1.0, Ki = 0.1, Kd = 0.01; // Parâmetros do PID
 float targetValue = 0; // Valor alvo
@@ -234,7 +235,7 @@ void Seguir() {
 void Calibracao() {
     const unsigned long tempoCalibracao = 5000; // Tempo total de calibração em milissegundos
     unsigned long tempoInicial = millis(); // Captura o tempo inicial
-
+    const unsigned long IntervaloTempoBUZZ = 500;
     // Arrays para armazenar os 5 maiores e 5 menores valores de cada sensor
     int maiores[QTSensores][5] = {0}; // Inicializa com 0
     int menores[QTSensores][5]; // Inicializa como não definidos
@@ -246,6 +247,10 @@ void Calibracao() {
 
     // Realiza as leituras por 5 segundos
     while (millis() - tempoInicial < tempoCalibracao) {
+        if (millis() - CalibraInterval >= IntervaloTempoBUZZ ){
+          tone(BUZZ,440,200); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
+          CalibraInterval = millis();
+        }
         for (int sensorIndex = 0; sensorIndex < QTSensores; sensorIndex++) {
             // Configura os pinos do MUX para o sensor atual
             Mandar_Mux_Bin[0] = (sensorIndex & 0x01); // LSB
@@ -333,9 +338,10 @@ void setup() {
   pinMode(ENB, OUTPUT);
   
   Serial.begin(115200);
-  
+  /*
   pinMode(BotCalibra, INPUT);
   pinMode(BotStart, INPUT);
+  pinMode(BUZZ, OUTPUT);
   // Aguarda pressionar o botão de calibração
   Serial.println("Pressione o botão de calibração...");
   while (digitalRead(BotCalibra) == LOW) {
@@ -343,15 +349,16 @@ void setup() {
   }
   
   Serial.println("Calibrando sensores...!");
-  
+
   // Chama a função de calibração
   Calibracao();
-  
+  tone(BUZZ,500,100); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
+  tone(BUZZ,500,100); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
   // Aguarda pressionar o botão de iniciar
   Serial.println("Pressione o botão para iniciar...");
   while (digitalRead(BotStart) == LOW) {
       // Aguarda até que o botão seja pressionado
-  }
+  }*/
   Serial.println("3!...");
   delay(1000);
   Serial.println("2!...");
