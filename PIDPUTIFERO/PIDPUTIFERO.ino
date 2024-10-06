@@ -12,7 +12,7 @@ float erro = 0, erroA = 0;
 int VeloE, VeloD;
 unsigned long CalibraInterval = 0; // Tempo de inicia de calibracao
 //////////////////////////////////////// PID ////////////////////////////////////////
-float Kp = 5.0, Ki = 0, Kd = 0.0; // Parâmetros do PID
+float Kp = 10, Ki = 0, Kd = 0.0; // Parâmetros do PID
 float targetValue = 0; // Valor alvo
 bool autoTuningEnabled = false; // Habilitar/desabilitar auto-tuning
 unsigned long lastTuneTime = 0; // Tempo da última atualização de tuning
@@ -237,11 +237,12 @@ void Calibracao() {
     const unsigned long tempoCalibracao = 5000; // Tempo total de calibração em milissegundos
     unsigned long tempoInicial = millis(); // Captura o tempo inicial
     const unsigned long IntervaloTempoBUZZ = 1000;
+    const int QtLeituras = 20;
     // Arrays para armazenar os 5 maiores e 5 menores valores de cada sensor
-    int maiores[QTSensores][5] = {0}; // Inicializa com 0
-    int menores[QTSensores][5]; // Inicializa como não definidos
+    int maiores[QTSensores][QtLeituras] = {0}; // Inicializa com 0
+    int menores[QTSensores][QtLeituras]; // Inicializa como não definidos
     for (int i = 0; i < QTSensores; i++) {
-        for (int j = 0; j < 5; j++) {
+        for (int j = 0; j < QtLeituras; j++) {
             menores[i][j] = 1023; // Inicializa com um valor alto
         }
     }
@@ -271,7 +272,7 @@ void Calibracao() {
             if (valorLido < menores[sensorIndex][0]) {
                 menores[sensorIndex][0] = valorLido;
                 // Bubble sort simples
-                for (int k = 0; k < 4; k++) {
+                for (int k = 0; k < QtLeituras - 1; k++) {
                     if (menores[sensorIndex][k] < menores[sensorIndex][k + 1]) {
                         int aux = menores[sensorIndex][k];
                         menores[sensorIndex][k] = menores[sensorIndex][k + 1];
@@ -281,10 +282,10 @@ void Calibracao() {
             }
 
             // Atualiza os 5 menores
-            if (valorLido > maiores[sensorIndex][4]) {
-                maiores[sensorIndex][4] = valorLido;
+            if (valorLido > maiores[sensorIndex][QtLeituras - 1]) {
+                maiores[sensorIndex][QtLeituras - 1] = valorLido;
                 // Bubble sort simples
-                for (int k = 4; k > 0; k--) {
+                for (int k = QtLeituras - 1; k > 0; k--) {
                     if (maiores[sensorIndex][k] > maiores[sensorIndex][k - 1]) {
                         int aux = maiores[sensorIndex][k];
                         maiores[sensorIndex][k] = maiores[sensorIndex][k - 1];
@@ -298,8 +299,8 @@ void Calibracao() {
 
     // Calcula a mediana dos 5 maiores e 5 menores para cada sensor
     for (int sensorIndex = 0; sensorIndex < QTSensores; sensorIndex++) {
-        float medianaMaiores = calcularMediana(maiores[sensorIndex], 5);
-        float medianaMenores = calcularMediana(menores[sensorIndex], 5);
+        float medianaMaiores = calcularMediana(maiores[sensorIndex], QtLeituras);
+        float medianaMenores = calcularMediana(menores[sensorIndex], QtLeituras);
 
         // Calcula o valor de corte para o sensor atual
         corte[sensorIndex] = (medianaMaiores + medianaMenores) / 2;
@@ -340,6 +341,7 @@ void setup() {
   pinMode(IN4, OUTPUT);
   pinMode(ENB, OUTPUT);
   pinMode(STBY, OUTPUT);
+  digitalWrite(STBY,HIGH);
   Serial.begin(115200);
   
   pinMode(BotCalibra, INPUT);
