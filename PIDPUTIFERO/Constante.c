@@ -14,7 +14,7 @@
 //////////////////////////////////////// SENSOR ////////////////////////////////////////
 #define QTSensores 11
 #define MUX_SIG A2
-const int MUX_S[4] = {2, 3, 4, 5}; // Pinos do mux {A,B,C,D}
+const int MUX_S[4] = {5, 4, 3, 2}; // Pinos do mux {A,B,C,D}
 #define BRANCO 1
 #define PRETO 0
 #define NumLeituras 5
@@ -23,13 +23,13 @@ const int MUX_S[4] = {2, 3, 4, 5}; // Pinos do mux {A,B,C,D}
 #define IN1 7 // Esquerda
 #define IN2 8 // Esquerda
 #define IN3 11 // Direita
-#define IN4 10 // Direita
-#define ENB 12 // Direita
+#define IN4 12 // Direita
+#define ENB 10 // Direita
 #define STBY 9
 
-#define PWME 130
-#define PWMD 130
-#define MAXR 130
+#define PWME 50
+#define PWMD 50
+#define MAXR 60
 //////////////////////////////////////// AUXLIARES ////////////////////////////////////////
 #define Parar 0
 #define Frente 1
