@@ -12,7 +12,7 @@ float erro = 0, erroA = 0;
 int VeloE, VeloD;
 unsigned long CalibraInterval = 0; // Tempo de inicia de calibracao
 //////////////////////////////////////// PID ////////////////////////////////////////
-float Kp = 10, Ki = 0, Kd = 0.0; // Parâmetros do PID
+float Kp = 10, Ki = 0.5, Kd = 2.0; // Parâmetros do PID
 float targetValue = 0; // Valor alvo
 bool autoTuningEnabled = false; // Habilitar/desabilitar auto-tuning
 unsigned long lastTuneTime = 0; // Tempo da última atualização de tuning
@@ -358,6 +358,7 @@ void setup() {
   // Chama a função de calibração
   Calibracao();
   tone(BUZZ,500,100); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
+  delay(200);
   tone(BUZZ,500,100); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
   // Aguarda pressionar o botão de iniciar
   Serial.println("Pressione o botão para iniciar...");
