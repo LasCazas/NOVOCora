@@ -221,15 +221,41 @@ void Seguir() {
     
     if (VeloD < 0) { VeloD = 0; }
     if (VeloE < 0) { VeloE = 0; }
-
-    digitalWrite(IN1, HIGH);
-    digitalWrite(IN2, LOW);
-    analogWrite(ENA, VeloE);
     
-    // Motor_D
-    digitalWrite(IN3, HIGH);
-    digitalWrite(IN4, LOW);
-    analogWrite(ENB, VeloD);
+    if((SensorBIN[0] == PRETO) && (SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) &&
+       (SensorBIN[3] == PRETO) && (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && 
+       (SensorBIN[6] == PRETO) && (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && 
+       (SensorBIN[9] == PRETO )&& (SensorBIN[10] == BRANCO)) {
+      digitalWrite(IN1, HIGH);
+      digitalWrite(IN2, LOW);
+      analogWrite(ENA, PWME);
+      
+      // Motor_D
+      digitalWrite(IN3, LOW);
+      digitalWrite(IN4, HIGH);
+      analogWrite(ENB, PWMD);
+    } else if ((SensorBIN[0] == BRANCO) && (SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) &&
+       (SensorBIN[3] == PRETO) && (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && 
+       (SensorBIN[6] == PRETO) && (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && 
+       (SensorBIN[9] == PRETO )&& (SensorBIN[10] == PRETO)) {
+      digitalWrite(IN1, LOW);
+      digitalWrite(IN2, HIGH);
+      analogWrite(ENA, PWME);
+      
+      // Motor_D
+      digitalWrite(IN3, HIGH);
+      digitalWrite(IN4, LOW);
+      analogWrite(ENB, PWMD);
+    } else{
+      digitalWrite(IN1, HIGH);
+      digitalWrite(IN2, LOW);
+      analogWrite(ENA, VeloE);
+      
+      // Motor_D
+      digitalWrite(IN3, HIGH);
+      digitalWrite(IN4, LOW);
+      analogWrite(ENB, VeloD);
+    }
     //Serial.println("" + )
 }
 
