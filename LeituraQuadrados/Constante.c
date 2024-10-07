@@ -4,9 +4,6 @@
 #define CONSTANTES_H
 
 // Declaração de Constantes
-
-#define Delta 20
-#define DifTras 18
 //////////////////////////////////////// BOTOES ////////////////////////////////////////
 #define BotCalibra A3
 #define BotStart A0
@@ -18,6 +15,7 @@ const int MUX_S[4] = {5, 4, 3, 2}; // Pinos do mux {A,B,C,D}
 #define BRANCO 1
 #define PRETO 0
 #define NumLeituras 5
+#define AumentaCorte 50
 //////////////////////////////////////// MOTOR ////////////////////////////////////////
 #define ENA 6 // Esquerda
 #define IN1 7 // Esquerda
@@ -27,12 +25,12 @@ const int MUX_S[4] = {5, 4, 3, 2}; // Pinos do mux {A,B,C,D}
 #define ENB 10 // Direita
 #define STBY 9
 
-#define PWME 80
-#define PWMD 80
+#define PWME 50
+#define PWMD 50
 #define MAXR 60
 //////////////////////////////////////// Square ////////////////////////////////////////
 #define BUFFER_SIZE 5
-#define re 1
+#define re 100
 #define PraFrente 0
 
 #endif // CONSTANTES_H
