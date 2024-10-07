@@ -12,12 +12,11 @@ float erro = 0, erroA = 0;
 int VeloE, VeloD;
 unsigned long CalibraInterval = 0; // Tempo de inicia de calibracao
 //////////////////////////////////////// PID ////////////////////////////////////////
-float Kp = 10, Ki = 0.5, Kd = 2; // Parâmetros do PID
+float Kp = 10, Ki = 0.5, Kd = 2.0; // Parâmetros do PID
 float targetValue = 0; // Valor alvo
 bool autoTuningEnabled = false; // Habilitar/desabilitar auto-tuning
 unsigned long lastTuneTime = 0; // Tempo da última atualização de tuning
 const unsigned long tuneInterval = 1000; // Intervalo de tempo para ajuste
-/////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////// Quadrado ////////////////////////////////////
 int bufferLeft[BUFFER_SIZE] = {0};  // Buffer para armazenar as últimas leituras do sensor esquerdo
 int bufferRight[BUFFER_SIZE] = {0}; // Buffer para armazenar as últimas leituras do sensor direito
@@ -60,7 +59,8 @@ void Leitura() {
   // Atualiza o índice de controle para o histórico de leituras (circular)
   IndiceLeitura = (IndiceLeitura + 1) % NumLeituras;
 
-
+  // Impressão de dados para depuração
+  //ImprimirSensores(3);
 
   // Funções auxiliares para processamento de dados
   Discretiza();
@@ -74,27 +74,27 @@ void ImprimirSensores(int Antropofagico) {
             Serial.print("| "); // Adiciona vírgula entre os sensores
         }
     }
-  }
-  else if (Antropofagico == 2){
+  } else if (Antropofagico == 2){
     for (int i = 0; i < QTSensores; i++) {
       Serial.print(SensorBIN[i]);
       if (i < QTSensores - 1) {
           Serial.print("| "); // Adiciona vírgula entre os sensores
       }
-      Serial.print(" | VeloE: " + String(VeloE) + " | VeloD: " + String(VeloD));
     }
-  }
-  else if (Antropofagico == 3){
+  } else if (Antropofagico == 3){
     for (int i = 0; i < QTSensores; i++) {
       Serial.print(SensorBIN[i]);
       if (i < QTSensores - 1) {
           Serial.print("| "); // Adiciona vírgula entre os sensores
       }
-      
     }
-    Serial.print("SquarL: "+ String(QtQuadradoLeft) + "  SqiuarR: "+  String(QtQuadradoRight) +  "  Encru: " + String(encruzilhada) );
+    Serial.print( " |Erro: "+String(erro)+ "|SquarL: "+ String(QtQuadradoLeft) + "  SquarR: "+  String(QtQuadradoRight) +  "  Encru: " + String(encruzilhada) );
   }
 
+  Serial.print(erro); // Imprime o valor do erro
+  //Serial.println();
+
+  //Serial.print(" | VeloE: " + String(VeloE) + " | VeloD: " + String(VeloD));
   //Serial.println(erro); // Imprime o valor do erro
   Serial.println();
 }
@@ -117,72 +117,96 @@ void CalculaErro() { // Negativo = mais para a esquerda, positivo = mais para a 
       (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
       erro = 0;
   
-  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == BRANCO) && (SensorBIN[5] == BRANCO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+  }else if ((SensorBIN[1] == BRANCO) && (SensorBIN[3] == PRETO) &&
+      (SensorBIN[4] == PRETO) && ((SensorBIN[5] == BRANCO) || (SensorBIN[6] == BRANCO)) && 
+      (SensorBIN[0] == BRANCO) && (SensorBIN[10] == PRETO)) {
+      erro = 0;
+  }else if ((SensorBIN[10] == BRANCO) && (SensorBIN[8] == PRETO) &&
+      ((SensorBIN[4] == BRANCO) || (SensorBIN[5] == BRANCO)) && 
+      (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
+      erro = 0;
+  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+      (SensorBIN[4] == BRANCO) && (SensorBIN[5] == BRANCO) && (SensorBIN[6] == PRETO) &&
+      (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) &&
+      (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = -0.5;
-  } else if ( (SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == BRANCO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) ) {
+  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+            (SensorBIN[4] == BRANCO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+            (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) &&
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = -1;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == BRANCO) &&
-             (SensorBIN[4] == BRANCO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == BRANCO) &&
+            (SensorBIN[4] == BRANCO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+            (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) &&
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = -1.5;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == BRANCO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == BRANCO) &&
+            (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+            (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) &&
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = -2;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == BRANCO) && (SensorBIN[3] == BRANCO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == BRANCO) && (SensorBIN[3] == BRANCO) &&
+            (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+            (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) &&
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = -2.5;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == BRANCO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == BRANCO) && (SensorBIN[3] == PRETO) &&
+            (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+            (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) &&
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = -3;
-  }else if ((SensorBIN[1] == BRANCO) && (SensorBIN[2] == BRANCO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+  } else if ((SensorBIN[1] == BRANCO) && (SensorBIN[2] == BRANCO) && (SensorBIN[3] == PRETO) &&
+            (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+            (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) &&
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = -3.5;
-  }else if ((SensorBIN[1] == BRANCO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+  } else if ((SensorBIN[1] == BRANCO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) && 
+            (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) && 
+            (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) &&
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = -4;
   } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == BRANCO) && (SensorBIN[6] == BRANCO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+            (SensorBIN[4] == PRETO) && (SensorBIN[5] == BRANCO) && (SensorBIN[6] == BRANCO) &&
+            (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) &&
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = 0.5;
-  } else if ( (SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == BRANCO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) ) {
+  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+            (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == BRANCO) &&
+            (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) &&
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = 1;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == BRANCO) &&
-             (SensorBIN[7] == BRANCO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+            (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == BRANCO) &&
+            (SensorBIN[7] == BRANCO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) &&
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = 1.5;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == BRANCO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
+  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+            (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+            (SensorBIN[7] == BRANCO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) &&
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = 2;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == BRANCO) && (SensorBIN[8] == BRANCO) && (SensorBIN[9] == PRETO)) {
+  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+            (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+            (SensorBIN[7] == BRANCO) && (SensorBIN[8] == BRANCO) && (SensorBIN[9] == PRETO) &&
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = 2.5;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == BRANCO) && (SensorBIN[9] == PRETO)) {
+  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+            (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+            (SensorBIN[7] == PRETO) && (SensorBIN[8] == BRANCO) && (SensorBIN[9] == PRETO) &&
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = 3;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == BRANCO) && (SensorBIN[9] == BRANCO)) {
+  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+            (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+            (SensorBIN[7] == PRETO) && (SensorBIN[8] == BRANCO) && (SensorBIN[9] == BRANCO) &&
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = 3.5;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == BRANCO)) {
+  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
+            (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
+            (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == BRANCO) &&
+            (SensorBIN[10] == PRETO)) {
       erro = 4;
-  // Caso nenhum dos padrões seja detectado, manter erro anterior
-  } else {
+  } else{
+// Caso nenhum dos padrões seja detectado, manter erro anterior else {
       erro = erroA; // Assume que erroA é uma variável definida anteriormente
   }
 }
@@ -230,7 +254,8 @@ void Seguir(bool Sentido) {
     if (Sentido == PraFrente){
       AutoTunePID(); // Chama o auto-tuning
 
-      PID = constrain(PID, -MAXR, MAXR); // Limita o PID
+      if (PID < -MAXR) { PID = -MAXR; }
+      if (PID > MAXR) { PID = MAXR; }
       
       if (PID > 0) { // Direita
           VeloE = PWME;
@@ -240,44 +265,66 @@ void Seguir(bool Sentido) {
           VeloD = PWMD;
       }
       
-      VeloD = constrain(VeloD, 0, PWMD);
-      VeloE = constrain(VeloE, 0, PWME);
-
-      digitalWrite(IN1, HIGH);
-      digitalWrite(IN2, LOW);
-      analogWrite(ENA, VeloE);
-      
-      // Motor_D
-      digitalWrite(IN3, HIGH);
-      digitalWrite(IN4, LOW);
-      analogWrite(ENB, VeloD);
-    } else if (Sentido == re ){
-      if (PID < -MAXR) { PID = -MAXR; }
-      if (PID > MAXR) { PID = MAXR; }
-      
-      if (PID > 0) { // Direita
-          VeloE = PWME- PID;
-          VeloD = PWMD ;
-      } else { // Esquerda
-          VeloE = PWME ;
-          VeloD = PWMD- abs(PID);
-      }
-      VeloE -= 10;
-      VeloD -= 10;
-      
       if (VeloD < 0) { VeloD = 0; }
       if (VeloE < 0) { VeloE = 0; }
-      //inverte para ele ir para traz
-      digitalWrite(IN1, LOW);
-      digitalWrite(IN2, HIGH);
-      analogWrite(ENA, VeloE);
       
-      // Motor_D
-      digitalWrite(IN3, LOW);
-      digitalWrite(IN4, HIGH);
-      analogWrite(ENB, VeloD);
-    }
-}
+      if(erro == 4) {
+        digitalWrite(IN1, HIGH);
+        digitalWrite(IN2, LOW);
+        analogWrite(ENA, PWME);
+        
+        // Motor_D
+        digitalWrite(IN3, LOW);
+        digitalWrite(IN4, HIGH);
+        analogWrite(ENB, PWMD);
+      } else if (erro == -4) {
+        digitalWrite(IN1, LOW);
+        digitalWrite(IN2, HIGH);
+        analogWrite(ENA, PWME);
+        
+        // Motor_D
+        digitalWrite(IN3, HIGH);
+        digitalWrite(IN4, LOW);
+        analogWrite(ENB, PWMD);
+      } else{
+        digitalWrite(IN1, HIGH);
+        digitalWrite(IN2, LOW);
+        analogWrite(ENA, VeloE);
+        
+        // Motor_D
+        digitalWrite(IN3, HIGH);
+        digitalWrite(IN4, LOW);
+        analogWrite(ENB, VeloD);
+      }
+    } else if (Sentido == re){
+        if (PID < -MAXR) { PID = -MAXR; }
+        if (PID > MAXR) { PID = MAXR; }
+        
+        if (PID > 0) { // Direita
+            VeloE = PWME- PID;
+            VeloD = PWMD ;
+        } else { // Esquerda
+            VeloE = PWME ;
+            VeloD = PWMD- abs(PID);
+        }
+        VeloE -= 10;
+        VeloD -= 10;
+        
+        if (VeloD < 0) { VeloD = 0; }
+        if (VeloE < 0) { VeloE = 0; }
+        //inverte para ele ir para traz
+        digitalWrite(IN1, LOW);
+        digitalWrite(IN2, HIGH);
+        analogWrite(ENA, VeloE);
+        
+        // Motor_D
+        digitalWrite(IN3, LOW);
+        digitalWrite(IN4, HIGH);
+        analogWrite(ENB, VeloD);
+      }
+  }
+
+
 
 void Calibracao() {
     const unsigned long tempoCalibracao = 5000; // Tempo total de calibração em milissegundos
@@ -349,7 +396,7 @@ void Calibracao() {
         float medianaMenores = calcularMediana(menores[sensorIndex], QtLeituras);
 
         // Calcula o valor de corte para o sensor atual
-        corte[sensorIndex] = (medianaMaiores + medianaMenores) / 2;
+        corte[sensorIndex] = (medianaMaiores + medianaMenores) / 2 +AumentaCorte ;
 
         // Imprime os resultados de cada sensor
         Serial.print("Sensor " + String(sensorIndex) + " - Mediana Maiores: " + String(medianaMenores) + ", Mediana Menores: " + String(medianaMaiores) + ", Corte: " + String(corte[sensorIndex]) + "\n");
@@ -377,13 +424,13 @@ void LeituraQuadrados() {
 
     // Verifica mudanças baseadas nas médias calculadas
     if (leAntLeft != SensorBIN[0]) {
-        if ((SensorBIN[0] == BRANCO) && (SensorBIN[10] == PRETO) && (SensorBIN[9] == PRETO)) {
+        if ((SensorBIN[0] == BRANCO) && (SensorBIN[2] == PRETO)&& (SensorBIN[10] == PRETO) && (SensorBIN[9] == PRETO)) {
             QtQuadradoLeft += 1; // Contabiliza quadrado na esquerda
         }
     }
     
     if (leAntRight != SensorBIN[10]) {
-        if ((SensorBIN[10] == BRANCO) && (SensorBIN[0] == PRETO) && (SensorBIN[1] == PRETO)) {
+        if ((SensorBIN[10] == BRANCO) && (SensorBIN[8] == BRANCO) && (SensorBIN[0] == PRETO) && (SensorBIN[1] == PRETO)) {
             QtQuadradoRight += 1; // Contabiliza quadrado na direita
         }
     }
@@ -397,16 +444,16 @@ bool DetectarEncruzilhada() {
   // Se o sensor central (frente) e os sensores laterais (esquerda e direita) estão detectando a linha preta simultaneamente,
   // assumimos que estamos em uma encruzilhada.
   
-  if (SensorBIN[0] == PRETO && SensorBIN[6] == PRETO && SensorBIN[10] == PRETO) {
+  if (SensorBIN[0] == BRANCO && SensorBIN[6] == BRANCO && SensorBIN[10] == BRANCO) {
     // Detecção de uma encruzilhada completa (cruzamento em X ou em T)
     return true;
   }
   // Encruzilhada em T 
-  else if (SensorBIN[0] == PRETO && SensorBIN[3] == PRETO) {
+  else if (SensorBIN[0] == BRANCO && SensorBIN[1] == BRANCO && SensorBIN[2] == BRANCO ) {
     // Detecta uma encruzilhada em "T" à esquerda
     return true;
   } 
-  else if (SensorBIN[10] == PRETO && SensorBIN[8] == PRETO) {
+  else if (SensorBIN[10] == BRANCO && SensorBIN[9] == BRANCO && SensorBIN[8] == BRANCO ) {
     // Detecta uma encruzilhada em "T" à direita
     return true;
   }
@@ -415,6 +462,9 @@ bool DetectarEncruzilhada() {
 }
 void Virar(bool LadoVira){
   if (LadoVira == 0 ){
+    Serial.println("VIRANDO PRA ESQUEEEERDDA");
+    Serial.println("VIRANDO PRA ESQUEEEERDDA");
+    Serial.println("VIRANDO PRA ESQUEEEERDDA");
     digitalWrite(IN1, LOW); // VIRA PARA A ESQUERDA
     digitalWrite(IN2, HIGH);
     analogWrite(ENA, PWME);
@@ -423,7 +473,7 @@ void Virar(bool LadoVira){
     digitalWrite(IN3, HIGH);
     digitalWrite(IN4, LOW);
     analogWrite(ENB, PWMD);
-    delay(500);
+    delay(100);
     digitalWrite(IN1, HIGH); // Anda um tiquin reto
     digitalWrite(IN2, LOW);
     analogWrite(ENA, PWME);
@@ -434,6 +484,7 @@ void Virar(bool LadoVira){
     analogWrite(ENB, PWMD);
     delay(100);
   } else{
+    Serial.println("VIRANDO PRA DIREEEITA");
     digitalWrite(IN1, HIGH); // VIRA PARA A DIREITA
     digitalWrite(IN2, LOW);
     analogWrite(ENA, PWME);
@@ -455,7 +506,6 @@ void Virar(bool LadoVira){
     delay(100);
   }
 }
-
 void setup() {
   // Sensores
   pinMode(MUX_SIG, INPUT);
@@ -472,7 +522,7 @@ void setup() {
   pinMode(STBY, OUTPUT);
   digitalWrite(STBY,HIGH);
   Serial.begin(115200);
-
+  
   pinMode(BotCalibra, INPUT);
   pinMode(BotStart, INPUT);
   pinMode(BUZZ, OUTPUT);
@@ -487,76 +537,175 @@ void setup() {
   // Chama a função de calibração
   Calibracao();
   tone(BUZZ,500,100); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
+  delay(200);
   tone(BUZZ,500,100); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
   // Aguarda pressionar o botão de iniciar
   Serial.println("Pressione o botão para iniciar...");
   while (digitalRead(BotCalibra) == LOW) {
       // Aguarda até que o botão seja pressionado
   }
+  /*
   Serial.println("3!...");
   delay(1000);
   Serial.println("2!...");
   delay(1000);
   Serial.println("1!...");
   delay(1000);
-  Serial.println("======= avua fi!======");
-  digitalWrite(STBY,HIGH);
+  Serial.println("======= avua fi!======");*/
 }
 
 void loop() {
   Leitura();
   LeituraQuadrados();
   ImprimirSensores(3);
+  
   if (DetectarEncruzilhada()) {
     encruzilhada = true; // Marca que uma encruzilhada foi encontrada
   }
-  
+
   //////////////////////////////////////// Estado 0 ///////////////////////////////////////////////////////////////////
   if (Estado == 0) {
     if (encruzilhada) {
-      // Se o robô encontrou uma encruzilhada
-      if (deveVirar) {
-        // Se a flag "deveVirar" está ativa, o robô deve virar agora
-        Virar(ladoVirar); // 0 para esquerda, e 1 para direita
-        deveVirar = false; // Resetamos a flag após a virada
+      // Se o robô encontrou uma encruzilhada, verifica a quantidade de quadrados
+      if (QtQuadradoRight == 1) {
+        Estado = 1; // Muda para o estado 1 (vira para a direita)
+      } else if (QtQuadradoRight == 2) {
+        Estado = 2; // Muda para o estado 2 (vira para a direita)
+      } else if (QtQuadradoRight == 3) {
+        Estado = 3; // Muda para o estado 3 (vira para a direita)
+      } else if (QtQuadradoRight >= 4) {
+        Estado = 4; // Muda para o estado 4 (vira para a direita)
+      } else if (QtQuadradoLeft == 1) {
+        Estado = 5; // Muda para o estado 5 (vira para a esquerda)
+      } else if (QtQuadradoLeft == 2) {
+        Estado = 6; // Muda para o estado 6 (vira para a esquerda)
+      } else if (QtQuadradoLeft == 3) {
+        Estado = 7; // Muda para o estado 7 (vira para a esquerda)
+      } else if (QtQuadradoLeft >= 4) {
+        Estado = 8; // Muda para o estado 8 (vira para a esquerda)
       } else {
-        // Se há quadrados para processar à esquerda
-        if (QtQuadradoLeft > 0) {
-          QtQuadradoLeft--;
-          ladoVirar = 0; // Sinaliza que o robô deve virar para a esquerda
-        }
-
-        // Se há quadrados para processar à direita
-        if (QtQuadradoRight > 0) {
-          QtQuadradoRight--;
-          ladoVirar = 1; // Sinaliza que o robô deve virar para a direita
-        }
-
-        if (QtQuadradoLeft == 0 && QtQuadradoRight == 0) {
-          // Se o contador de quadrados chegou a zero para ambos os lados,
-          // sinaliza que o robô deve virar na próxima encruzilhada
-          deveVirar = true;
-        }
-      }
-
-      encruzilhada = false; // Reseta a flag de encruzilhada
-    } else {
-      // Lógica para execução da marcha à ré ao detectar duas marcas brancas
-      if ((QtQuadradoRight > 0 && QtQuadradoLeft > 0) && (SensorBIN[0] == PRETO && SensorBIN[10] == PRETO)) {
-        Estado = re;
-        QtQuadradoLeft = 0;
-        QtQuadradoRight = 0;
-      } else {
-        // Continua seguindo a linha normalmente se não houver encruzilhada
+        // Se não há quadrados à direita ou à esquerda, continua seguindo a linha
         Seguir(PraFrente);
-        // Impressão de dados para depuração
-        
       }
+
+    } else {
+      // Continua seguindo a linha normalmente se não houver encruzilhada
+      Seguir(PraFrente);
     }
+  }
+  Serial.println(" Estado: " + String(Estado));
+  //////////////////////////////////////// Estado 1 (Direita) //////////////////////////////////////////////////////////
+  if (Estado == 1) {
+    Virar(1); // Vira para a direita
+    Estado = 0; // Retorna ao estado 0 após a virada
+    QtQuadradoLeft = 0;
+    QtQuadradoRight = 0;
+  }
+
+  //////////////////////////////////////// Estado 2 (Direita) //////////////////////////////////////////////////////////
+  if (Estado == 2) {
+    Virar(1); // Vira para a direita
+    // Seguir até encontrar outra encruzilhada
+    while (!DetectarEncruzilhada()) {
+      Seguir(PraFrente);
+    }
+    encruzilhada = true; // Marca que uma nova encruzilhada foi encontrada
+    Estado = 0; // Retorna ao estado 0
+    QtQuadradoLeft = 0;
+    QtQuadradoRight = 0;
+  }
+
+  //////////////////////////////////////// Estado 3 (Direita) //////////////////////////////////////////////////////////
+  if (Estado == 3) {
+    Virar(1); // Vira para a direita
+    // Seguir até encontrar a segunda encruzilhada
+    int contadorEncruzilhadas = 0;
+    while (contadorEncruzilhadas < 2) {
+      if (DetectarEncruzilhada()) {
+        contadorEncruzilhadas++;
+      }
+      Seguir(PraFrente);
+    }
+    encruzilhada = true; // Marca que uma nova encruzilhada foi encontrada
+    Estado = 0; // Retorna ao estado 0
+    QtQuadradoLeft = 0;
+    QtQuadradoRight = 0;
+  }
+
+  //////////////////////////////////////// Estado 4 (Direita) //////////////////////////////////////////////////////////
+  if (Estado == 4) {
+    Virar(1); // Vira para a direita
+    // Seguir até encontrar a terceira encruzilhada
+    int contadorEncruzilhadas = 0;
+    while (contadorEncruzilhadas < 3) {
+      if (DetectarEncruzilhada()) {
+        contadorEncruzilhadas++;
+      }
+      Seguir(PraFrente);
+    }
+    encruzilhada = true; // Marca que uma nova encruzilhada foi encontrada
+    Estado = 0; // Retorna ao estado 0
+    QtQuadradoLeft = 0;
+    QtQuadradoRight = 0;
+  }
+
+  //////////////////////////////////////// Estado 5 (Esquerda) //////////////////////////////////////////////////////////
+  if (Estado == 5) {
+    Virar(0); // Vira para a esquerda
+    Estado = 0; // Retorna ao estado 0 após a virada
+    QtQuadradoLeft = 0;
+    QtQuadradoRight = 0;
+  }
+
+  //////////////////////////////////////// Estado 6 (Esquerda) //////////////////////////////////////////////////////////
+  if (Estado == 6) {
+    Virar(0); // Vira para a esquerda
+    // Seguir até encontrar outra encruzilhada
+    while (!DetectarEncruzilhada()) {
+      Seguir(PraFrente);
+    }
+    encruzilhada = true; // Marca que uma nova encruzilhada foi encontrada
+    Estado = 0; // Retorna ao estado 0
+    QtQuadradoLeft = 0;
+    QtQuadradoRight = 0;
+  }
+
+  //////////////////////////////////////// Estado 7 (Esquerda) //////////////////////////////////////////////////////////
+  if (Estado == 7) {
+    Virar(0); // Vira para a esquerda
+    // Seguir até encontrar a segunda encruzilhada
+    int contadorEncruzilhadas = 0;
+    while (contadorEncruzilhadas < 2) {
+      if (DetectarEncruzilhada()) {
+        contadorEncruzilhadas++;
+      }
+      Seguir(PraFrente);
+    }
+    encruzilhada = true; // Marca que uma nova encruzilhada foi encontrada
+    Estado = 0; // Retorna ao estado 0
+    QtQuadradoLeft = 0;
+    QtQuadradoRight = 0;
+  }
+
+  //////////////////////////////////////// Estado 8 (Esquerda) //////////////////////////////////////////////////////////
+  if (Estado == 8) {
+    Virar(0); // Vira para a esquerda
+    // Seguir até encontrar a terceira encruzilhada
+    int contadorEncruzilhadas = 0;
+    while (contadorEncruzilhadas < 3) {
+      if (DetectarEncruzilhada()) {
+        contadorEncruzilhadas++;
+      }
+      Seguir(PraFrente);
+    }
+    encruzilhada = true; // Marca que uma nova encruzilhada foi encontrada
+    Estado = 0; // Retorna ao estado 0
+    QtQuadradoLeft = 0;
+    QtQuadradoRight = 0;
   }
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
-  if (Estado == re) {
+  /*if (Estado == re) {
     if (encruzilhada) {
       if (QtQuadradoLeft > 0) {
         QtQuadradoLeft--;
@@ -574,5 +723,6 @@ void loop() {
       // Volta de ré
       Seguir(re);
     }
-  } // fim do Estado re
+  } // fim do Estado re*/
+
 } // fim do loop
