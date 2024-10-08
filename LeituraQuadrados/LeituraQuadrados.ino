@@ -117,18 +117,16 @@ void CalculaErro() { // Negativo = mais para a esquerda, positivo = mais para a 
       (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
       erro = 0;
   
-  }else if ((SensorBIN[1] == BRANCO) && (SensorBIN[3] == PRETO) &&
-      (SensorBIN[4] == PRETO) && ((SensorBIN[5] == BRANCO) || (SensorBIN[6] == BRANCO)) && 
-      (SensorBIN[0] == BRANCO) && (SensorBIN[10] == PRETO)) {
+  }else if ( ((SensorBIN[5] == BRANCO) || (SensorBIN[6] == BRANCO)) && 
+             (SensorBIN[0] == BRANCO) && (SensorBIN[10] == PRETO)) {
       erro = 0;
-  }else if ((SensorBIN[10] == BRANCO) && (SensorBIN[8] == PRETO) &&
-      ((SensorBIN[4] == BRANCO) || (SensorBIN[5] == BRANCO)) && 
-      (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
+  }else if (((SensorBIN[4] == BRANCO) || (SensorBIN[5] == BRANCO)) && 
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == BRANCO)) {
       erro = 0;
   }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-      (SensorBIN[4] == BRANCO) && (SensorBIN[5] == BRANCO) && (SensorBIN[6] == PRETO) &&
-      (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) &&
-      (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
+            (SensorBIN[4] == BRANCO) && (SensorBIN[5] == BRANCO) && (SensorBIN[6] == PRETO) &&
+            (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) &&
+            (SensorBIN[0] == PRETO) && (SensorBIN[10] == PRETO)) {
       erro = -0.5;
   } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
             (SensorBIN[4] == BRANCO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
@@ -206,7 +204,7 @@ void CalculaErro() { // Negativo = mais para a esquerda, positivo = mais para a 
             (SensorBIN[10] == PRETO)) {
       erro = 4;
   } else{
-// Caso nenhum dos padrões seja detectado, manter erro anterior else {
+  // Caso nenhum dos padrões seja detectado, manter erro anterior else {
       erro = erroA; // Assume que erroA é uma variável definida anteriormente
   }
 }
@@ -226,7 +224,6 @@ void AntiWindUp() {
       I = 0; // Zera a parte integrativa quando o sinal do erro muda
   }
 }
-
 void AutoTunePID() {
   if (autoTuningEnabled && (millis() - lastTuneTime > tuneInterval)) {
       // Ajusta Kp, Ki, Kd com base na resposta do sistema
@@ -247,7 +244,6 @@ void AutoTunePID() {
       lastTuneTime = millis(); // Atualiza o tempo da última modificação
   }
 }
-
 void Seguir(bool Sentido) {
     CalculaErro();
     CalculaPID();
@@ -268,7 +264,7 @@ void Seguir(bool Sentido) {
       if (VeloD < 0) { VeloD = 0; }
       if (VeloE < 0) { VeloE = 0; }
       
-      if(erro == 4) {
+      if(VeloD == 0) {
         digitalWrite(IN1, HIGH);
         digitalWrite(IN2, LOW);
         analogWrite(ENA, PWME);
@@ -277,7 +273,7 @@ void Seguir(bool Sentido) {
         digitalWrite(IN3, LOW);
         digitalWrite(IN4, HIGH);
         analogWrite(ENB, PWMD);
-      } else if (erro == -4) {
+      } else if (VeloE == 0) {
         digitalWrite(IN1, LOW);
         digitalWrite(IN2, HIGH);
         analogWrite(ENA, PWME);
@@ -322,10 +318,7 @@ void Seguir(bool Sentido) {
         digitalWrite(IN4, HIGH);
         analogWrite(ENB, VeloD);
       }
-  }
-
-
-
+}
 void Calibracao() {
     const unsigned long tempoCalibracao = 5000; // Tempo total de calibração em milissegundos
     unsigned long tempoInicial = millis(); // Captura o tempo inicial
@@ -462,9 +455,9 @@ bool DetectarEncruzilhada() {
 }
 void Virar(bool LadoVira){
   if (LadoVira == 0 ){
-    Serial.println("VIRANDO PRA ESQUEEEERDDA");
-    Serial.println("VIRANDO PRA ESQUEEEERDDA");
-    Serial.println("VIRANDO PRA ESQUEEEERDDA");
+    Serial.println("VIRANDO PRA IXQUERDÂÂÂÂ");
+    Serial.println("VIRANDO PRA IXQUERDÂÂÂÂ");
+    Serial.println("VIRANDO PRA IXQUERDÂÂÂÂ");
     digitalWrite(IN1, LOW); // VIRA PARA A ESQUERDA
     digitalWrite(IN2, HIGH);
     analogWrite(ENA, PWME);
@@ -536,9 +529,10 @@ void setup() {
 
   // Chama a função de calibração
   Calibracao();
-  tone(BUZZ,500,100); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
+  tone(BUZZ,523,100); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
   delay(200);
-  tone(BUZZ,500,100); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
+  tone(BUZZ,523,100); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
+
   // Aguarda pressionar o botão de iniciar
   Serial.println("Pressione o botão para iniciar...");
   while (digitalRead(BotCalibra) == LOW) {
@@ -546,10 +540,13 @@ void setup() {
   }
   /*
   Serial.println("3!...");
+  tone(BUZZ,523,100); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
   delay(1000);
   Serial.println("2!...");
+  tone(BUZZ,523,100); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
   delay(1000);
   Serial.println("1!...");
+  tone(BUZZ,523,100); // PIN, FREQUENCIA, TEMPO DE DURACAO DO BARULHO
   delay(1000);
   Serial.println("======= avua fi!======");*/
 }
