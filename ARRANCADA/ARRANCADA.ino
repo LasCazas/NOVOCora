@@ -12,7 +12,7 @@ float erro = 0, erroA = 0;
 int VeloE, VeloD;
 unsigned long CalibraInterval = 0; // Tempo de inicia de calibracao
 //////////////////////////////////////// PID ////////////////////////////////////////
-float Kp = 10, Ki = 0.5, Kd = 2.0; // Parâmetros do PID
+float Kp = 10, Ki = 0.00, Kd = 0.005; // Parâmetros do PID
 float targetValue = 0; // Valor alvo
 bool autoTuningEnabled = false; // Habilitar/desabilitar auto-tuning
 unsigned long lastTuneTime = 0; // Tempo da última atualização de tuning
@@ -21,19 +21,13 @@ const unsigned long tuneInterval = 1000; // Intervalo de tempo para ajuste
 int bufferLeft[BUFFER_SIZE] = {0};  // Buffer para armazenar as últimas leituras do sensor esquerdo
 int bufferRight[BUFFER_SIZE] = {0}; // Buffer para armazenar as últimas leituras do sensor direito
 int bufferIndex = 0;                // Índice circular para o buffer
-int leAntLeft = 0, leAntRight = 0;
-int QtQuadradoLeft = 0, QtQuadradoRight = 0;
-bool encruzilhada = false; // Flag para indicar se encontrou encruzilhada
-bool deveVirar = false; // Flag para indicar se deve virar na próxima encruzilhada
-bool ladoVirar = 0;
-////////////////////////////////////////////////////////////////////////////////////
-int Estado = 0;
+/////////////////////////////////////// SoftStart ////////////////////////////////////
 int i = 0, j = 0;
 unsigned long startTime = 0;  // Tempo inicial do softstart
-const unsigned long softstartDuration = 1000;  // Duração do softstart em milissegundos (exemplo: 3 segundos)
+const unsigned long softstartDuration = 2000;  // Duração do softstart em milissegundos (exemplo: 3 segundos)
 int VeloE_target = PWME;  // Velocidade final desejada para o motor esquerdo
 int VeloD_target = PWMD;  // Velocidade final desejada para o motor direito
-
+//////////////////////////////////////////////////////////////////////////////////////
 void Leitura() {
   for (int i = 0; i < QTSensores; i++) {
       // Configura os pinos do MUX com base nos bits
@@ -92,7 +86,7 @@ void ImprimirSensores(int Antropofagico) {
           Serial.print("| "); // Adiciona vírgula entre os sensores
       }
     }
-    Serial.print( " |Erro: "+String(erro)+ "|SquarL: "+ String(QtQuadradoLeft) + "  SquarR: "+  String(QtQuadradoRight) +  "  Encru: " + String(encruzilhada) );
+    Serial.print( " |Erro: "+String(erro));
   }
 
   Serial.print(erro); // Imprime o valor do erro
@@ -422,25 +416,26 @@ void setup() {
   
 }
 
-void Seguir(bool Sentido) {
-    CalculaErro();
-    CalculaPID();
-    AutoTunePID(); // Chama o auto-tuning
-    
-    if (PID < -MAXR) { PID = -MAXR; }
-    if (PID > MAXR) { PID = MAXR; }
+void loop() {
+  Leitura();
+  CalculaErro();
+  CalculaPID();
+  AutoTunePID(); // Chama o auto-tuning
+  
+  if (PID < -MAXR) { PID = -MAXR; }
+  if (PID > MAXR) { PID = MAXR; }
 
-    // Ajusta as velocidades com base no PID
-    if (PID > 0) { // Direita
-        VeloE_target = PWME;
-        VeloD_target = PWMD - PID;
-    } else { // Esquerda
-        VeloE_target = PWME - abs(PID);
-        VeloD_target = PWMD;
-    }
+  // Ajusta as velocidades com base no PID
+  if (PID > 0) { // Direita
+      VeloE_target = PWME;
+      VeloD_target = PWMD - PID;
+  } else { // Esquerda
+      VeloE_target = PWME - abs(PID);
+      VeloD_target = PWMD;
+  }
 
-    if (VeloD_target < 0) { VeloD_target = 0; }
-    if (VeloE_target < 0) { VeloE_target = 0; }
-    
-    SoftStart(); // Chama o softstart para aplicar as velocidades gradualmente
+  if (VeloD_target < 0) { VeloD_target = 0; }
+  if (VeloE_target < 0) { VeloE_target = 0; }
+  
+  SoftStart(); // Chama o softstart para aplicar as velocidades gradualmente
 }
