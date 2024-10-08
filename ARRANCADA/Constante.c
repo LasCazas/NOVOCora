@@ -12,8 +12,8 @@
 #define QTSensores 11
 #define MUX_SIG A2
 const int MUX_S[4] = {5, 4, 3, 2}; // Pinos do mux {A,B,C,D}
-int BRANCO 1
-int PRETO 0
+#define BRANCO 0
+#define PRETO 1
 #define NumLeituras 5
 #define AumentaCorte 0
 //////////////////////////////////////// MOTOR ////////////////////////////////////////
@@ -25,9 +25,9 @@ int PRETO 0
 #define ENB 10 // Direita
 #define STBY 9
 
-#define PWME 150
-#define PWMD 150
-#define MAXR 60
+#define PWME 200
+#define PWMD 200
+#define MAXR 200
 //////////////////////////////////////// Square ////////////////////////////////////////
 #define BUFFER_SIZE 5
 #define re 100
