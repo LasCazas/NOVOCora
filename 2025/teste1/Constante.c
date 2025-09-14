@@ -11,26 +11,27 @@
 //#define BotCalibra A3
 //#define BotStart A0
 //#define BUZZ A1
+//////////////////////////////////////// PID ////////////////////////////////////////
+
 //////////////////////////////////////// SENSOR ////////////////////////////////////////
 #define QTSensores 13
 #define MUX_SIG A0
 const int MUX_S[4] = {14,12,13,15}; // Pinos do mux {A,B,C,D}0,4,5,16
-#define BRANCO 1
-
-#define PRETO 0
+#define BRANCO 0
+#define PRETO 1
 #define NumLeituras 5
 //////////////////////////////////////// MOTOR ////////////////////////////////////////
-const int pwmMotorE = 5; //d1 Velocidade (PWM) do motor esquerdo
-const int dirMotorE = 0; //d3 Direção (DIR) do motor esquerdo
+const int pwmMotorD = 5; //d1 Velocidade (PWM) do motor esquerdo
+const int dirMotorD = 0; //d3 Direção (DIR) do motor esquerdo
 
 // Motor Direito (Motor B no shield)
-const int pwmMotorD = 4; // d2Velocidade (PWM) do motor direito
-const int dirMotorD = 2; //d4  Direção (DIR) do motor direito
+const int pwmMotorE = 4; // d2Velocidade (PWM) do motor direito
+const int dirMotorE = 2; //d4  Direção (DIR) do motor direito
 
 
-#define PWME 255
-#define PWMD 255
-#define MAXR 255
+#define PWME 80
+#define PWMD 80
+#define MAXR 100
 //////////////////////////////////////// AUXLIARES ////////////////////////////////////////
 #define Parar 0
 #define Frente 1

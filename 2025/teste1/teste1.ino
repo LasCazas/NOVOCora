@@ -64,6 +64,7 @@ void Leitura() {
 }
 
 void ImprimirSensores(int Antropofagico) {
+    
   if (Antropofagico == 1){
     for (int i = 0; i < QTSensores; i++) {
         Serial.print(Sensor[i]);
@@ -80,9 +81,12 @@ void ImprimirSensores(int Antropofagico) {
       }
     }
   }
-  //Serial.print(" | VeloE: " + String(VeloE) + " | VeloD: " + String(VeloD));
-  //Serial.println(erro); // Imprime o valor do erro
-  Serial.println();
+  if(Antropofagico != 0){
+      Serial.print(" | VeloE: " + String(VeloE) + " | VeloD: " + String(VeloD) + "|");
+  Serial.println(erro); // Imprime o valor do erro
+    }
+
+
 }
 
 void Discretiza() {
@@ -219,39 +223,34 @@ void Seguir() {
     if (PID > MAXR) { PID = MAXR; }
     
     if (PID > 0) { // Direita
-        VeloE = PWME;
+        VeloE = PWME + PID;
         VeloD = PWMD - PID;
     } else { // Esquerda
         VeloE = PWME - abs(PID);
-        VeloD = PWMD;
+        VeloD = PWMD + abs(PID);
     }
     
     if (VeloD < 0) { VeloD = 0; }
     if (VeloE < 0) { VeloE = 0; }
-    
+    if (VeloD > MAXR) {VeloD = MAXR;}
+    if (VeloE > MAXR) {VeloE = MAXR;}
     // --- LÓGICA DE CONTROLE DO MOTOR ATUALIZADA ---
 
-    if((SensorBIN[0] == PRETO) && (SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) &&
-       (SensorBIN[3] == PRETO) && (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && 
-       (SensorBIN[6] == PRETO) && (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && 
-       (SensorBIN[9] == PRETO )&& (SensorBIN[10] == BRANCO)) {
+    if(VeloE >= MAXR && VeloD <= 0) {
         
         // Curva fechada para a esquerda (Motor Esquerdo para frente, Direito para trás)
         digitalWrite(dirMotorE, LOW);  // Motor Esquerdo FRENTE
         digitalWrite(dirMotorD, HIGH); // Motor Direito TRÁS
-        analogWrite(pwmMotorE, PWME);
-        analogWrite(pwmMotorD, PWMD);
+        analogWrite(pwmMotorE, VeloE);
+        analogWrite(pwmMotorD, VeloE);
 
-    } else if ((SensorBIN[0] == BRANCO) && (SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) &&
-       (SensorBIN[3] == PRETO) && (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && 
-       (SensorBIN[6] == PRETO) && (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && 
-       (SensorBIN[9] == PRETO )&& (SensorBIN[10] == PRETO)) {
+    } else if (VeloD >= MAXR && VeloE <= 0) {
         
         // Curva fechada para a direita (Motor Esquerdo para trás, Direito para frente)
         digitalWrite(dirMotorE, HIGH); // Motor Esquerdo TRÁS
         digitalWrite(dirMotorD, LOW);  // Motor Direito FRENTE
-        analogWrite(pwmMotorE, PWME);
-        analogWrite(pwmMotorD, PWMD);
+        analogWrite(pwmMotorE, VeloD);
+        analogWrite(pwmMotorD, VeloD);
 
     } else {
         // Seguir a linha (ambos os motores para frente com correção do PID)
@@ -304,9 +303,9 @@ void Calibracao() {
             // --- APLICA A INVERSÃO AQUI ---
             // Calcula o índice de destino invertido
             int indiceInvertido = (QTSensores - 1) - sensorIndex; // << MUDANÇA PRINCIPAL
-
-            Serial.print("|" + String(maiores[indiceInvertido][0])); // << MUDANÇA AQUI
-
+            if (Antropofagico != 0){
+                Serial.print("|" + String(maiores[indiceInvertido][0])); // << MUDANÇA AQUI
+            }
             // Atualiza os menores valores no índice invertido
             if (valorLido < menores[indiceInvertido][0]) { // << MUDANÇA AQUI
                 menores[indiceInvertido][0] = valorLido; // << MUDANÇA AQUI
@@ -333,7 +332,9 @@ void Calibracao() {
                 }
             }
         }
-        Serial.println();
+        if (Antropofagico != 0){
+            Serial.println();
+        }
     }
 
     // Calcula a mediana e o corte para cada sensor, usando a lógica invertida
@@ -350,7 +351,9 @@ void Calibracao() {
 
         // Imprime os resultados. Note que usamos 'indiceInvertido' para o log
         // ser consistente com a ordem do array (Sensor 0, Sensor 1, etc.).
-        Serial.print("Sensor " + String(indiceInvertido) + " - Mediana Maiores: " + String(medianaMenores) + ", Mediana Menores: " + String(medianaMaiores) + ", Corte: " + String(corte[indiceInvertido]) + "\n");
+        if (Antropofagico != 0){
+            Serial.print("Sensor " + String(indiceInvertido) + " - Mediana Maiores: " + String(medianaMenores) + ", Mediana Menores: " + String(medianaMaiores) + ", Corte: " + String(corte[indiceInvertido]) + "\n");
+        }
     }
 }
 float calcularMediana(int valores[], int tamanho) {
@@ -382,24 +385,27 @@ void setup() {
   pinMode(dirMotorE, OUTPUT);
   pinMode(pwmMotorD, OUTPUT);
   pinMode(dirMotorD, OUTPUT);
-
-  Serial.begin(9600);
+  if (Antropofagico != 0 ){
+    Serial.begin(115200);
+  }
   
   //pinMode(BotCalibra, INPUT);
   //pinMode(BotStart, INPUT);
   //pinMode(BUZZ, OUTPUT);
   // Aguarda pressionar o botão de calibração
-  
-  Serial.println("Calibrando sensores...!");
-
+  if (Antropofagico == 0 ){
+    Serial.println("Calibrando sensores...!");
+  }
   // Chama a função de calibração
   Calibracao();
-  Serial.println("======= avua fi!======");
+  if (Antropofagico != 0 ){
+    Serial.println("======= avua fi!======");
+  }
   //digitalWrite(6,HIGH);
 }
 
 void loop() {
 
   Leitura();
-  //Seguir(); // Estado padrão ele segue a linha
+  Seguir(); // Estado padrão ele segue a linha
 }
