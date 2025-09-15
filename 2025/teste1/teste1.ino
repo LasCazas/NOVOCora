@@ -7,6 +7,10 @@ int IndiceLeitura = 0;                    // Índice de controle para o históri
 
 bool Mandar_Mux_Bin[4] = {0};
 int corte[QTSensores] = {0};
+// Arrays globais para guardar min e max de cada sensor
+int menores[QTSensores][1];
+int maiores[QTSensores][1];
+
 int P = 0, I = 0, D = 0, PID = 0;
 float erro = 0, erroA = 0;
 int VeloE, VeloD;
@@ -38,18 +42,16 @@ void Leitura() {
 
     // --- Armazenamento Invertido ---
     // Calcula o índice de destino invertido
-    int indiceInvertido = (QTSensores - 1) - i; // << MUDANÇA PRINCIPAL AQUI
-
+    int indiceInvertido = (QTSensores - 1) - i; // 
     // Atualiza o histórico de leituras na posição invertida
-    HistoricoLeituras[indiceInvertido][IndiceLeitura] = leituraAtual; // << MUDANÇA AQUI
+    HistoricoLeituras[indiceInvertido][IndiceLeitura] = leituraAtual; // 
 
-    // Calcula a média das 5 últimas leituras para o sensor na posição invertida
     long soma = 0; // Usar 'long' para a soma evita estouro (overflow)
     for (int k = 0; k < NumLeituras; k++) {
-      soma += HistoricoLeituras[indiceInvertido][k]; // << MUDANÇA AQUI
+      soma += HistoricoLeituras[indiceInvertido][k]; // 
     }
     // Armazena a média no vetor Sensor na posição invertida
-    Sensor[indiceInvertido] = soma / NumLeituras; // << MUDANÇA AQUI
+    Sensor[indiceInvertido] = soma / NumLeituras; // 
   }
 
   // O resto da função permanece igual
@@ -100,172 +102,123 @@ void Discretiza() {
   }
 }
 
-void CalculaErro() { // Negativo = mais para a esquerda, positivo = mais para a direita
-  // Quando o sensor central (SensorBIN[5]) detecta branco
-  if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-      (SensorBIN[4] == PRETO) && (SensorBIN[5] == BRANCO) && (SensorBIN[6] == PRETO) && 
-      (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
-      erro = 0;
-  
-  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == BRANCO) && (SensorBIN[5] == BRANCO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
-      erro = -0.5;
-  } else if ( (SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == BRANCO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) ) {
-      erro = -1;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == BRANCO) &&
-             (SensorBIN[4] == BRANCO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
-      erro = -1.5;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == BRANCO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
-      erro = -2;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == BRANCO) && (SensorBIN[3] == BRANCO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
-      erro = -2.5;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == BRANCO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
-      erro = -3;
-  }else if ((SensorBIN[1] == BRANCO) && (SensorBIN[2] == BRANCO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
-      erro = -3.5;
-  }else if ((SensorBIN[1] == BRANCO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
-      erro = -4;
-  } else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == BRANCO) && (SensorBIN[6] == BRANCO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
-      erro = 0.5;
-  } else if ( (SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == BRANCO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO) ) {
-      erro = 1;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == BRANCO) &&
-             (SensorBIN[7] == BRANCO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
-      erro = 1.5;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == BRANCO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == PRETO)) {
-      erro = 2;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == BRANCO) && (SensorBIN[8] == BRANCO) && (SensorBIN[9] == PRETO)) {
-      erro = 2.5;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == BRANCO) && (SensorBIN[9] == PRETO)) {
-      erro = 3;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == BRANCO) && (SensorBIN[9] == BRANCO)) {
-      erro = 3.5;
-  }else if ((SensorBIN[1] == PRETO) && (SensorBIN[2] == PRETO) && (SensorBIN[3] == PRETO) &&
-             (SensorBIN[4] == PRETO) && (SensorBIN[5] == PRETO) && (SensorBIN[6] == PRETO) &&
-             (SensorBIN[7] == PRETO) && (SensorBIN[8] == PRETO) && (SensorBIN[9] == BRANCO)) {
-      erro = 4;
-  // Caso nenhum dos padrões seja detectado, manter erro anterior
-  } else {
-      erro = erroA; // Assume que erroA é uma variável definida anteriormente
-  }
+void CalculaErro() {
+    long soma = 0;
+    int ativos = 0;
+
+    for (int i = 0; i < QTSensores; i++) {
+        if (SensorBIN[i] == BRANCO) {  // Detecta a linha
+            soma += i * 1000;         // Peso proporcional à posição
+            ativos++;
+        }
+    }
+
+    if (ativos > 0) {
+        float posicaoMedia = (float)soma / ativos;  
+        erro = (posicaoMedia - (SENSOR_CENTRAL * 1000)) / 1000.0;
+    } else {
+        erro = erroA; // Mantém o erro anterior se não encontrou linha
+    }
 }
 
+
 void CalculaPID() {
+  // --- Cálculo dos termos ---
   P = erro * Kp;
   I = I + erro;
   D = erro - erroA;
-  AntiWindUp(); // Limita a parte integrativa (anti-windup)
+
+  AntiWindUp(); // Limita a parte integrativa
+
+  // --- Saída PID ---
   PID = P + (Ki * I) + (Kd * D);
+
+  // --- Atualiza erro anterior ---
   erroA = erro;
 }
 
 void AntiWindUp() { 
-  if (erro == 0) { I = 0; }
-  if ((erro > 0 && erroA < 0) || (erro < 0 && erroA >= 0)) {
-      I = 0; // Zera a parte integrativa quando o sinal do erro muda
+  // Zera a parte integrativa quando o erro some ou inverte
+  if (erro == 0) {
+    I = 0;
+  }
+  if ((erro > 0 && erroA < 0) || (erro < 0 && erroA > 0)) {
+    I = 0;
   }
 }
 
 void AutoTunePID() {
   if (autoTuningEnabled && (millis() - lastTuneTime > tuneInterval)) {
-      // Ajusta Kp, Ki, Kd com base na resposta do sistema
-      if (erro > 0) {
-          Kp += 0.1; // Aumenta Kp se o erro for positivo
-      } else {
-          Kp -= 0.1; // Diminui Kp se o erro for negativo
-      }
+    // Ajuste proporcional adaptativo simples
+    if (erro > 0) {
+      Kp += 0.1;
+    } else {
+      Kp -= 0.1;
+    }
 
-      Ki += 0.01; // Aumenta Ki
-      Kd += 0.001; // Aumenta Kd
+    // Pequeno ajuste em Ki e Kd
+    Ki += 0.01;
+    Kd += 0.001;
 
-      // Limita os valores dos parâmetros para evitar crescimento excessivo
-      Kp = constrain(Kp, 0, 10);
-      Ki = constrain(Ki, 0, 1);
-      Kd = constrain(Kd, 0, 1);
+    // Evita valores explosivos
+    Kp = constrain(Kp, 0, 10);
+    Ki = constrain(Ki, 0, 1);
+    Kd = constrain(Kd, 0, 1);
 
-      lastTuneTime = millis(); // Atualiza o tempo da última modificação
+    lastTuneTime = millis();
   }
 }
 
 void Seguir() {
-    CalculaErro();
-    CalculaPID();
-    AutoTunePID(); // Chama o auto-tuning
+  CalculaErro();
+  CalculaPID();
+  AutoTunePID();
 
-    if (PID < -MAXR) { PID = -MAXR; }
-    if (PID > MAXR) { PID = MAXR; }
-    
-    if (PID > 0) { // Direita
-        VeloE = PWME + PID;
-        VeloD = PWMD - PID;
-    } else { // Esquerda
-        VeloE = PWME - abs(PID);
-        VeloD = PWMD + abs(PID);
-    }
-    
-    if (VeloD < 0) { VeloD = 0; }
-    if (VeloE < 0) { VeloE = 0; }
-    if (VeloD > MAXR) {VeloD = MAXR;}
-    if (VeloE > MAXR) {VeloE = MAXR;}
-    // --- LÓGICA DE CONTROLE DO MOTOR ATUALIZADA ---
+  // --- Limita saída PID ---
+  PID = constrain(PID, -MAXR, MAXR);
 
-    if(VeloE >= MAXR && VeloD <= 0) {
-        
-        // Curva fechada para a esquerda (Motor Esquerdo para frente, Direito para trás)
-        digitalWrite(dirMotorE, LOW);  // Motor Esquerdo FRENTE
-        digitalWrite(dirMotorD, HIGH); // Motor Direito TRÁS
-        analogWrite(pwmMotorE, VeloE);
-        analogWrite(pwmMotorD, VeloE);
+  // --- Calcula velocidades ---
+  if (PID > 0) { // Correção para direita
+    VeloE = PWME + PID;
+    VeloD = PWMD - PID;
+  } else {       // Correção para esquerda
+    VeloE = PWME + PID;  // PID é negativo
+    VeloD = PWMD - PID;  // subtrair negativo = somar
+  }
 
-    } else if (VeloD >= MAXR && VeloE <= 0) {
-        
-        // Curva fechada para a direita (Motor Esquerdo para trás, Direito para frente)
-        digitalWrite(dirMotorE, HIGH); // Motor Esquerdo TRÁS
-        digitalWrite(dirMotorD, LOW);  // Motor Direito FRENTE
-        analogWrite(pwmMotorE, VeloD);
-        analogWrite(pwmMotorD, VeloD);
+  // --- Limita velocidades ---
+  VeloE = constrain(VeloE, 0, MAXR);
+  VeloD = constrain(VeloD, 0, MAXR);
 
-    } else {
-        // Seguir a linha (ambos os motores para frente com correção do PID)
-        digitalWrite(dirMotorE, LOW); // Motor Esquerdo FRENTE
-        digitalWrite(dirMotorD, LOW); // Motor Direito FRENTE
-        analogWrite(pwmMotorE, VeloE);
-        analogWrite(pwmMotorD, VeloD);
-    }
+  // --- Controle dos motores ---
+  if (VeloE >= MAXR && VeloD <= 0) {
+    // Curva fechada esquerda
+    digitalWrite(dirMotorE, LOW);   // Motor E frente
+    digitalWrite(dirMotorD, HIGH);  // Motor D trás
+    analogWrite(pwmMotorE, VeloE);
+    analogWrite(pwmMotorD, VeloE);
+
+  } else if (VeloD >= MAXR && VeloE <= 0) {
+    // Curva fechada direita
+    digitalWrite(dirMotorE, HIGH);  // Motor E trás
+    digitalWrite(dirMotorD, LOW);   // Motor D frente
+    analogWrite(pwmMotorE, VeloD);
+    analogWrite(pwmMotorD, VeloD);
+
+  } else {
+    // Movimento normal (ambos frente)
+    digitalWrite(dirMotorE, LOW);
+    digitalWrite(dirMotorD, LOW);
+    analogWrite(pwmMotorE, VeloE);
+    analogWrite(pwmMotorD, VeloD);
+  }
 }
 
 void Calibracao() {
     const unsigned long tempoCalibracao = 5000;
     unsigned long tempoInicial = millis();
     const unsigned long IntervaloTempoBUZZ = 1000;
-    const int QtLeituras = 20;
+    const int QtLeituras = 5;
     
     // Arrays para armazenar os maiores e menores valores de cada sensor
     int maiores[QTSensores][QtLeituras] = {0};
@@ -374,6 +327,7 @@ float calcularMediana(int valores[], int tamanho) {
         return valores[tamanho / 2];
     }
 }
+
 void setup() {
   // Sensores
   pinMode(MUX_SIG, INPUT);
@@ -398,6 +352,7 @@ void setup() {
   }
   // Chama a função de calibração
   Calibracao();
+  delay(800);
   if (Antropofagico != 0 ){
     Serial.println("======= avua fi!======");
   }

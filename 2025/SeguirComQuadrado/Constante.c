@@ -21,6 +21,7 @@ const int MUX_S[4] = {14,12,13,15}; // Pinos do mux {A,B,C,D}0,4,5,16
 #define BRANCO 0
 #define PRETO 1
 #define NumLeituras 2
+#define NumLeiturasQuadrados 6
 //////////////////////////////////////// MOTOR ////////////////////////////////////////
 const int pwmMotorD = 5; //d1 Velocidade (PWM) do motor esquerdo
 const int dirMotorD = 0; //d3 Direção (DIR) do motor esquerdo
