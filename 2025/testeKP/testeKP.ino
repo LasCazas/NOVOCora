@@ -1,3 +1,10 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+
+// --- Configuração da Rede Wi-Fi e Servidor ---
+const char *ssid = "Robo-PID-Tuner";
+const char *password = "12345678";
+ESP8266WebServer server(80);
 #include "Constante.c"
 
 int Sensor[QTSensores] = {0}; // Inicializa zerando tudo
@@ -16,7 +23,7 @@ float erro = 0, erroA = 0;
 int VeloE, VeloD;
 unsigned long CalibraInterval = 0; // Tempo de inicia de calibracao
 //////////////////////////////////////// PID ////////////////////////////////////////
-float Kp = 10, Ki = 0.0, Kd = 0.0; // Parâmetros do PID
+float Kp = 10, Ki = 0.5, Kd = 2.0; // Parâmetros do PID
 float targetValue = 0; // Valor alvo
 bool autoTuningEnabled = false; // Habilitar/desabilitar auto-tuning
 unsigned long lastTuneTime = 0; // Tempo da última atualização de tuning
@@ -59,7 +66,7 @@ void Leitura() {
   IndiceLeitura = (IndiceLeitura + 1) % NumLeituras;
 
   // Impressão de dados para depuração
-  ImprimirSensores(Antropofagico);
+  //ImprimirSensores(Antropofagico);
 
   // Funções auxiliares para processamento de dados
   Discretiza();
@@ -328,39 +335,166 @@ float calcularMediana(int valores[], int tamanho) {
         return valores[tamanho / 2];
     }
 }
+// --- Página HTML com JavaScript para controle do PID ---
+String GetHTML() {
+  String html = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <title>PID Tuner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background-color: #282c34; color: white; }
+    h1 { text-align: center; }
+    .slider-container { margin-bottom: 20px; }
+    label { font-size: 1.2em; }
+    input[type=range] { width: 100%; }
+    .value { font-weight: bold; font-size: 1.2em; color: #61dafb; }
+    #data-container { margin-top: 30px; border-top: 1px solid #ccc; padding-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Controle PID - Robô Seguidor de Linha</h1>
+  
+  <div class="slider-container">
+    <label for="kp">Kp: <span id="kp_val" class="value">)rawliteral";
+  html += String(Kp);
+  html += R"rawliteral(</span></label>
+    <input type="range" id="kp" min="0" max="50" step="0.1" value=")rawliteral";
+  html += String(Kp);
+  html += R"rawliteral(" oninput="updateSlider('kp')">
+  </div>
+  
+  <div class="slider-container">
+    <label for="ki">Ki: <span id="ki_val" class="value">)rawliteral";
+  html += String(Ki);
+  html += R"rawliteral(</span></label>
+    <input type="range" id="ki" min="0" max="5" step="0.01" value=")rawliteral";
+  html += String(Ki);
+  html += R"rawliteral(" oninput="updateSlider('ki')">
+  </div>
 
+  <div class="slider-container">
+    <label for="kd">Kd: <span id="kd_val" class="value">)rawliteral";
+  html += String(Kd);
+  html += R"rawliteral(</span></label>
+    <input type="range" id="kd" min="0" max="10" step="0.05" value=")rawliteral";
+  html += String(Kd);
+  html += R"rawliteral(" oninput="updateSlider('kd')">
+  </div>
+
+  <div id="data-container">
+    <h2>Dados em Tempo Real</h2>
+    <p>Erro atual: <span id="erro_val" class="value">0.0</span></p>
+  </div>
+
+<script>
+  function updateSlider(param) {
+    var value = document.getElementById(param).value;
+    document.getElementById(param + '_val').innerText = value;
+    
+    // Envia os dados para o ESP8266
+    fetch('/update?kp=' + document.getElementById('kp').value + '&ki=' + document.getElementById('ki').value + '&kd=' + document.getElementById('kd').value)
+      .then(response => console.log('Valores enviados.'));
+  }
+
+  // Pede o valor do erro para o servidor a cada 500ms
+  setInterval(function() {
+    fetch('/data')
+      .then(response => response.json())
+      .then(data => {
+        document.getElementById('erro_val').innerText = data.erro;
+      })
+      .catch(error => console.error('Erro ao buscar dados:', error));
+  }, 500);
+</script>
+
+</body>
+</html>
+)rawliteral";
+  return html;
+}
+
+// --- Funções para lidar com as requisições do navegador ---
+
+// Envia a página principal
+void handleRoot() {
+  server.send(200, "text/html", GetHTML());
+}
+
+// Atualiza os valores do PID
+void handleUpdate() {
+  if (server.hasArg("kp")) Kp = server.arg("kp").toFloat();
+  if (server.hasArg("ki")) Ki = server.arg("ki").toFloat();
+  if (server.hasArg("kd")) Kd = server.arg("kd").toFloat();
+
+  server.send(200, "text/plain", "OK"); // Responde que deu tudo certo
+  
+  // Imprime no Serial para debug
+  Serial.println("Novos valores PID: Kp=" + String(Kp) + ", Ki=" + String(Ki) + ", Kd=" + String(Kd));
+}
+
+// Envia os dados (erro) em formato JSON
+void handleData() {
+  String json = "{\"erro\":" + String(erro) + "}";
+  server.send(200, "application/json", json);
+}
+
+// O que fazer se a página não for encontrada
+void handleNotFound() {
+  server.send(404, "text/plain", "Pagina Nao Encontrada");
+}
 void setup() {
-  // Sensores
+  // Configurações iniciais de hardware
   pinMode(MUX_SIG, INPUT);
   for (i = 0; i < 4; i++) {
       pinMode(MUX_S[i], OUTPUT);
   }
-  // Motores
   pinMode(pwmMotorE, OUTPUT);
   pinMode(dirMotorE, OUTPUT);
   pinMode(pwmMotorD, OUTPUT);
   pinMode(dirMotorD, OUTPUT);
+
   if (Antropofagico != 0 ){
     Serial.begin(115200);
   }
-  
-  //pinMode(BotCalibra, INPUT);
-  //pinMode(BotStart, INPUT);
-  //pinMode(BUZZ, OUTPUT);
-  // Aguarda pressionar o botão de calibração
-  if (Antropofagico == 0 ){
-    Serial.println("Calibrando sensores...!");
+  delay(100);
+
+  // --- PASSO 1: FAZ A CALIBRAÇÃO PRIMEIRO ---
+  if (Antropofagico != 0 ){
+    Serial.println("Calibrando sensores... Por favor, aguarde.");
   }
-  // Chama a função de calibração
-  Calibracao();
+  Calibracao(); // A tarefa demorada acontece aqui
   delay(800);
+  if (Antropofagico != 0 ){
+    Serial.println("Calibracao concluida!");
+  }
+
+
+  // --- PASSO 2: AGORA SIM, INICIA A REDE E O SERVIDOR ---
+  Serial.println("\nConfigurando o Ponto de Acesso (AP)...");
+  WiFi.softAP(ssid, password);
+
+  IPAddress myIP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(myIP);
+
+  server.on("/", HTTP_GET, handleRoot);
+  server.on("/update", HTTP_GET, handleUpdate);
+  server.on("/data", HTTP_GET, handleData);
+  server.onNotFound(handleNotFound);
+
+  server.begin();
+  Serial.println("Servidor HTTP iniciado! Pode conectar.");
+  Serial.println("Conecte-se a rede '" + String(ssid) + "' e acesse o IP acima.");
+  
   if (Antropofagico != 0 ){
     Serial.println("======= avua fi!======");
   }
-  //digitalWrite(6,HIGH);
 }
 
 void loop() {
+   server.handleClient(); // ESSENCIAL: Processa as requisições do cliente
 
   Leitura();
   Seguir(); // Estado padrão ele segue a linha

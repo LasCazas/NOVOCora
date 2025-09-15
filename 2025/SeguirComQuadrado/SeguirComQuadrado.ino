@@ -16,7 +16,7 @@ float erro = 0, erroA = 0;
 int VeloE, VeloD;
 unsigned long CalibraInterval = 0; // Tempo de inicia de calibracao
 //////////////////////////////////////// PID ////////////////////////////////////////
-float Kp = 10, Ki = 0.5, Kd = 2.0; // Parâmetros do PID
+float Kp = 10, Ki = 0.0, Kd = 0.0; // Parâmetros do PID
 float targetValue = 0; // Valor alvo
 bool autoTuningEnabled = false; // Habilitar/desabilitar auto-tuning
 unsigned long lastTuneTime = 0; // Tempo da última atualização de tuning
@@ -24,7 +24,7 @@ const unsigned long tuneInterval = 1000; // Intervalo de tempo para ajuste
 /////////////////////////////////////////////////////////////////////////////////////
 int i = 0, j = 0;
 int Antropofagico = 2;
-
+bool isTest = 1;
 // Variáveis para o sistema de quadrados e rotatória
 int contadorQuadradosEsquerda = 0; // Contador de quadrados no sensor da esquerda
 int contadorQuadradosDireita = 0;  // Contador de quadrados no sensor da direita
@@ -42,6 +42,8 @@ bool podeContarNovoQuadrado = true; // Flag para evitar contagem dupla
 unsigned long tempoIgnoreEsquerda = 0;  // Tempo da última detecção de quadrado à esquerda
 unsigned long tempoIgnoreDireita = 0;   // Tempo da última detecção de quadrado à direita
 const unsigned long duracaoIgnore = 300; // Duração (ms) para ignorar sensores laterais após quadrado
+
+
 void Leitura() {
   // O loop continua lendo os canais do MUX na ordem normal (0, 1, 2, ...)
   for (int i = 0; i < QTSensores; i++) {
@@ -293,14 +295,18 @@ void Seguir() {
     if (virarAgora) {
       // Decidir direção com base nos contadores de quadrados
       if (contadorQuadradosEsquerda >= contadorQuadradosDireita) {
+        if (!isTest){
         virar90Esquerda(); // Mais quadrados à esquerda, virar à esquerda
-        if (Antropofagico != 0) {
-          Serial.println("Virando à esquerda!");
+          if (Antropofagico != 0) {
+            Serial.println("Virando à esquerda!");
+          }
         }
       } else {
-        virar90Direita(); // Mais quadrados à direita, virar à direita
-        if (Antropofagico != 0) {
-          Serial.println("Virando à direita!");
+        if (!isTest){
+          virar90Direita(); // Mais quadrados à direita, virar à direita
+          if (Antropofagico != 0) {
+            Serial.println("Virando à direita!");
+          }
         }
       }
       return; // Após virar, sai da função (próximo loop fará nova leitura)
@@ -326,122 +332,125 @@ void Seguir() {
   // --- Limita velocidades ---
   VeloE = constrain(VeloE, 0, MAXR);
   VeloD = constrain(VeloD, 0, MAXR);
-
-  // --- Controle dos motores ---
-  if (VeloE >= MAXR && VeloD <= 0) {
-    // Curva fechada esquerda
-    digitalWrite(dirMotorE, LOW);   // Motor E frente
-    digitalWrite(dirMotorD, HIGH);  // Motor D trás
-    analogWrite(pwmMotorE, VeloE);
-    analogWrite(pwmMotorD, VeloE);
-  } else if (VeloD >= MAXR && VeloE <= 0) {
-    // Curva fechada direita
-    digitalWrite(dirMotorE, HIGH);  // Motor E trás
-    digitalWrite(dirMotorD, LOW);   // Motor D frente
-    analogWrite(pwmMotorE, VeloD);
-    analogWrite(pwmMotorD, VeloD);
-  } else {
-    // Movimento normal (ambos frente)
-    digitalWrite(dirMotorE, LOW);
-    digitalWrite(dirMotorD, LOW);
-    analogWrite(pwmMotorE, VeloE);
-    analogWrite(pwmMotorD, VeloD);
+  if (!isTest){
+    // --- Controle dos motores ---
+    if (VeloE >= MAXR && VeloD <= 0) {
+      // Curva fechada esquerda
+      digitalWrite(dirMotorE, LOW);   // Motor E frente
+      digitalWrite(dirMotorD, HIGH);  // Motor D trás
+      analogWrite(pwmMotorE, VeloE);
+      analogWrite(pwmMotorD, VeloE);
+    } else if (VeloD >= MAXR && VeloE <= 0) {
+      // Curva fechada direita
+      digitalWrite(dirMotorE, HIGH);  // Motor E trás
+      digitalWrite(dirMotorD, LOW);   // Motor D frente
+      analogWrite(pwmMotorE, VeloD);
+      analogWrite(pwmMotorD, VeloD);
+    } else {
+      // Movimento normal (ambos frente)
+      digitalWrite(dirMotorE, LOW);
+      digitalWrite(dirMotorD, LOW);
+      analogWrite(pwmMotorE, VeloE);
+      analogWrite(pwmMotorD, VeloD);
+    }
   }
 }
 
 void Calibracao() {
-  const unsigned long tempoCalibracao = 5000;
-  unsigned long tempoInicial = millis();
-  const unsigned long IntervaloTempoBUZZ = 1000;
-  const int QtLeituras = 5;
-  
-  // Arrays para armazenar os maiores e menores valores de cada sensor
-  int maiores[QTSensores][QtLeituras] = {0};
-  int menores[QTSensores][QtLeituras];
+    const unsigned long tempoCalibracao = 5000;
+    unsigned long tempoInicial = millis();
+    const unsigned long IntervaloTempoBUZZ = 1000;
+    const int QtLeituras = 5;
+    
+    // Arrays para armazenar os maiores e menores valores de cada sensor
+    int maiores[QTSensores][QtLeituras] = {0};
+    int menores[QTSensores][QtLeituras];
 
-  // A inicialização pode ser mantida, pois preenche o array todo
-  for (int i = 0; i < QTSensores; i++) {
-    for (int j = 0; j < QtLeituras; j++) {
-      menores[i][j] = 1023; // Inicializa com valor máximo
-    }
-  }
-
-  // Realiza as leituras durante o tempo de calibração
-  while (millis() - tempoInicial < tempoCalibracao) {
-    if (millis() - CalibraInterval >= IntervaloTempoBUZZ) {
-      // tone(BUZZ, 20, 300);
-      CalibraInterval = millis();
+    // A inicialização pode ser mantida, pois preenche o array todo
+    for (int i = 0; i < QTSensores; i++) {
+        for (int j = 0; j < QtLeituras; j++) {
+            menores[i][j] = 1023; // Inicializa com valor máximo
+        }
     }
 
-    // O loop varre os canais do MUX na ordem física (0, 1, 2...)
+    // Realiza as leituras durante o tempo de calibração
+    while (millis() - tempoInicial < tempoCalibracao) {
+        if (millis() - CalibraInterval >= IntervaloTempoBUZZ) {
+            // tone(BUZZ, 20, 300);
+            CalibraInterval = millis();
+        }
+
+        // O loop varre os canais do MUX na ordem física (0, 1, 2...)
+        for (int sensorIndex = 0; sensorIndex < QTSensores; sensorIndex++) {
+            // Configura os pinos do MUX para o sensor atual (não muda)
+            Mandar_Mux_Bin[0] = (sensorIndex & 0x01);
+            Mandar_Mux_Bin[1] = (sensorIndex & 0x02) >> 1;
+            Mandar_Mux_Bin[2] = (sensorIndex & 0x04) >> 2;
+            Mandar_Mux_Bin[3] = (sensorIndex & 0x08) >> 3;
+            
+            for (int j = 0; j < 4; j++) {
+                digitalWrite(MUX_S[j], Mandar_Mux_Bin[j]);
+            }
+
+            // Lê o valor do sensor (não muda)
+            int valorLido = analogRead(MUX_SIG);
+
+            // --- APLICA A INVERSÃO AQUI ---
+            // Calcula o índice de destino invertido
+            int indiceInvertido = (QTSensores - 1) - sensorIndex; // << MUDANÇA PRINCIPAL
+            if (Antropofagico != 0){
+                Serial.print("|" + String(maiores[indiceInvertido][0])); // << MUDANÇA AQUI
+            }
+            // Atualiza os menores valores no índice invertido
+            if (valorLido < menores[indiceInvertido][0]) { // << MUDANÇA AQUI
+                menores[indiceInvertido][0] = valorLido; // << MUDANÇA AQUI
+                // Bubble sort simples
+                for (int k = 0; k < QtLeituras - 1; k++) {
+                    if (menores[indiceInvertido][k] < menores[indiceInvertido][k + 1]) { // << MUDANÇA AQUI
+                        int aux = menores[indiceInvertido][k];
+                        menores[indiceInvertido][k] = menores[indiceInvertido][k + 1];
+                        menores[indiceInvertido][k + 1] = aux;
+                    }
+                }
+            }
+
+            // Atualiza os maiores valores no índice invertido
+            if (valorLido > maiores[indiceInvertido][QtLeituras - 1]) { // << MUDANÇA AQUI
+                maiores[indiceInvertido][QtLeituras - 1] = valorLido; // << MUDANÇA AQUI
+                // Bubble sort simples
+                for (int k = QtLeituras - 1; k > 0; k--) {
+                    if (maiores[indiceInvertido][k] > maiores[indiceInvertido][k - 1]) { // << MUDANÇA AQUI
+                        int aux = maiores[indiceInvertido][k];
+                        maiores[indiceInvertido][k] = maiores[indiceInvertido][k - 1];
+                        maiores[indiceInvertido][k - 1] = aux;
+                    }
+                }
+            }
+        }
+        if (Antropofagico != 0){
+            Serial.println();
+        }
+    }
+
+    // Calcula a mediana e o corte para cada sensor, usando a lógica invertida
     for (int sensorIndex = 0; sensorIndex < QTSensores; sensorIndex++) {
-      // Configura os pinos do MUX para o sensor atual (não muda)
-      Mandar_Mux_Bin[0] = (sensorIndex & 0x01);
-      Mandar_Mux_Bin[1] = (sensorIndex & 0x02) >> 1;
-      Mandar_Mux_Bin[2] = (sensorIndex & 0x04) >> 2;
-      Mandar_Mux_Bin[3] = (sensorIndex & 0x08) >> 3;
-      
-      for (int j = 0; j < 4; j++) {
-        digitalWrite(MUX_S[j], Mandar_Mux_Bin[j]);
-      }
+        // Calcula o índice invertido novamente para garantir a correspondência
+        int indiceInvertido = (QTSensores - 1) - sensorIndex; // << MUDANÇA PRINCIPAL
 
-      // Lê o valor do sensor (não muda)
-      int valorLido = analogRead(MUX_SIG);
+        // Acessa os dados já armazenados na ordem invertida
+        float medianaMaiores = calcularMediana(maiores[indiceInvertido], QtLeituras); // << MUDANÇA AQUI
+        float medianaMenores = calcularMediana(menores[indiceInvertido], QtLeituras); // << MUDANÇA AQUI
 
-      // --- APLICA A INVERSÃO AQUI ---
-      // Calcula o índice de destino invertido
-      int indiceInvertido = (QTSensores - 1) - sensorIndex;
-      if (Antropofagico != 0) {
-        Serial.print("|" + String(maiores[indiceInvertido][0]));
-      }
-      // Atualiza os menores valores no índice invertido
-      if (valorLido < menores[indiceInvertido][0]) {
-        menores[indiceInvertido][0] = valorLido;
-        // Bubble sort simples
-        for (int k = 0; k < QtLeituras - 1; k++) {
-          if (menores[indiceInvertido][k] < menores[indiceInvertido][k + 1]) {
-            int aux = menores[indiceInvertido][k];
-            menores[indiceInvertido][k] = menores[indiceInvertido][k + 1];
-            menores[indiceInvertido][k + 1] = aux;
-          }
+        // Armazena o valor de corte final na posição invertida
+        corte[indiceInvertido] = (medianaMaiores + medianaMenores) / 2; // << MUDANÇA AQUI
+
+        // Imprime os resultados. Note que usamos 'indiceInvertido' para o log
+        // ser consistente com a ordem do array (Sensor 0, Sensor 1, etc.).
+        if (Antropofagico != 0){
+            Serial.print("Sensor " + String(indiceInvertido) + " - Mediana Maiores: " + String(medianaMenores) + ", Mediana Menores: " + String(medianaMaiores) + ", Corte: " + String(corte[indiceInvertido]) + "\n");
         }
-      }
-
-      // Atualiza os maiores valores no índice invertido
-      if (valorLido > maiores[indiceInvertido][QtLeituras - 1]) {
-        maiores[indiceInvertido][QtLeituras - 1] = valorLido;
-        // Bubble sort simples
-        for (int k = QtLeituras - 1; k > 0; k--) {
-          if (maiores[indiceInvertido][k] > maiores[indiceInvertido][k - 1]) {
-            int aux = maiores[indiceInvertido][k];
-            maiores[indiceInvertido][k] = maiores[indiceInvertido][k - 1];
-            maiores[indiceInvertido][k - 1] = aux;
-          }
-        }
-      }
     }
-    if (Antropofagico != 0) {
-      Serial.println();
-    }
-  }
-
-  // Calcula a mediana e o corte para cada sensor, usando a lógica invertida
-  for (int sensorIndex = 0; sensorIndex < QTSensores; sensorIndex++) {
-    // Calcula o índice invertido novamente para garantir a correspondência
-    int indiceInvertido = (QTSensores - 1) - sensorIndex;
-
-    // Acessa os dados já armazenados na ordem invertida
-    float medianaMaiores = calcularMediana(maiores[indiceInvertido], QtLeituras);
-    float medianaMenores = calcularMediana(menores[indiceInvertido], QtLeituras);
-
-    // Armazena o valor de corte final na posição invertida
-    corte[indiceInvertido] = (medianaMaiores + medianaMenores) / 2;
-
-    // Imprime os resultados
-    if (Antropofagico != 0) {
-      Serial.print("Sensor " + String(indiceInvertido) + " - Mediana Maiores: " + String(medianaMenores) + ", Mediana Menores: " + String(medianaMaiores) + ", Corte: " + String(corte[indiceInvertido]) + "\n");
-    }
-  }
+    yield();
 }
 
 float calcularMediana(int valores[], int tamanho) {
