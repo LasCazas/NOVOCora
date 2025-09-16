@@ -1,9 +1,16 @@
 #include "Constante.c"
 
+// ======================= CONFIGURAÇÃO DE MODO =======================
+// Mude para 1 para o modo de produção. Isso desativa TODA a comunicação
+// serial para máxima eficiência e velocidade do robô.
+const int MODO_PRODUCAO = 0; // 0 = Modo Debug (Serial ATIVO), 1 = Modo Produção (Serial DESATIVADO)
+// ====================================================================
+
+
 int Sensor[QTSensores] = {0}; // Inicializa zerando tudo
 bool SensorBIN[QTSensores] = {1};
 int HistoricoLeituras[QTSensores][NumLeituras];  // Armazena as últimas 5 leituras de cada sensor
-int IndiceLeitura = 0;                    // Índice de controle para o histórico de leituras
+int IndiceLeitura = 0;                          // Índice de controle para o histórico de leituras
 
 bool Mandar_Mux_Bin[4] = {0};
 int corte[QTSensores] = {0};
@@ -24,6 +31,7 @@ const unsigned long tuneInterval = 1000; // Intervalo de tempo para ajuste
 /////////////////////////////////////////////////////////////////////////////////////
 int i = 0, j = 0;
 int Antropofagico = 2;
+
 void Leitura() {
   // O loop continua lendo os canais do MUX na ordem normal (0, 1, 2, ...)
   for (int i = 0; i < QTSensores; i++) {
@@ -66,6 +74,10 @@ void Leitura() {
 }
 
 void ImprimirSensores(int Antropofagico) {
+  // <<< ALTERADO: Se estiver em modo de produção, sai imediatamente da função.
+  if (MODO_PRODUCAO == 1) {
+    return;
+  }
     
   if (Antropofagico == 1){
     for (int i = 0; i < QTSensores; i++) {
@@ -85,10 +97,8 @@ void ImprimirSensores(int Antropofagico) {
   }
   if(Antropofagico != 0){
       Serial.print(" | VeloE: " + String(VeloE) + " | VeloD: " + String(VeloD) + "|");
-  Serial.println(erro); // Imprime o valor do erro
-    }
-
-
+      Serial.println(erro); // Imprime o valor do erro
+  }
 }
 
 void Discretiza() {
@@ -108,7 +118,7 @@ void CalculaErro() {
 
     for (int i = 0; i < QTSensores; i++) {
         if (SensorBIN[i] == BRANCO) {  // Detecta a linha
-            soma += i * 1000;         // Peso proporcional à posição
+            soma += i * 1000;          // Peso proporcional à posição
             ativos++;
         }
     }
@@ -120,7 +130,6 @@ void CalculaErro() {
         erro = erroA; // Mantém o erro anterior se não encontrou linha
     }
 }
-
 
 void CalculaPID() {
   // --- Cálculo dos termos ---
@@ -233,6 +242,7 @@ void Calibracao() {
 
     // Realiza as leituras durante o tempo de calibração
     while (millis() - tempoInicial < tempoCalibracao) {
+      yield();
         if (millis() - CalibraInterval >= IntervaloTempoBUZZ) {
             // tone(BUZZ, 20, 300);
             CalibraInterval = millis();
@@ -256,7 +266,9 @@ void Calibracao() {
             // --- APLICA A INVERSÃO AQUI ---
             // Calcula o índice de destino invertido
             int indiceInvertido = (QTSensores - 1) - sensorIndex; // << MUDANÇA PRINCIPAL
-            if (Antropofagico != 0){
+            
+            // <<< ALTERADO: Adiciona verificação de MODO_PRODUCAO
+            if (MODO_PRODUCAO == 0 && Antropofagico != 0){
                 Serial.print("|" + String(maiores[indiceInvertido][0])); // << MUDANÇA AQUI
             }
             // Atualiza os menores valores no índice invertido
@@ -285,7 +297,8 @@ void Calibracao() {
                 }
             }
         }
-        if (Antropofagico != 0){
+        // <<< ALTERADO: Adiciona verificação de MODO_PRODUCAO
+        if (MODO_PRODUCAO == 0 && Antropofagico != 0){
             Serial.println();
         }
     }
@@ -302,14 +315,14 @@ void Calibracao() {
         // Armazena o valor de corte final na posição invertida
         corte[indiceInvertido] = (medianaMaiores + medianaMenores) / 2; // << MUDANÇA AQUI
 
-        // Imprime os resultados. Note que usamos 'indiceInvertido' para o log
-        // ser consistente com a ordem do array (Sensor 0, Sensor 1, etc.).
-        if (Antropofagico != 0){
+        // <<< ALTERADO: Adiciona verificação de MODO_PRODUCAO
+        if (MODO_PRODUCAO == 0 && Antropofagico != 0){
             Serial.print("Sensor " + String(indiceInvertido) + " - Mediana Maiores: " + String(medianaMenores) + ", Mediana Menores: " + String(medianaMaiores) + ", Corte: " + String(corte[indiceInvertido]) + "\n");
         }
     }
     yield();
 }
+
 float calcularMediana(int valores[], int tamanho) {
     // Ordena o array
     for (int i = 0; i < tamanho - 1; i++) {
@@ -340,28 +353,40 @@ void setup() {
   pinMode(dirMotorE, OUTPUT);
   pinMode(pwmMotorD, OUTPUT);
   pinMode(dirMotorD, OUTPUT);
-  if (Antropofagico != 0 ){
+
+  // <<< ALTERADO: Inicializa o Serial e imprime mensagens apenas se não estiver em modo de produção.
+  if (MODO_PRODUCAO == 0) {
     Serial.begin(115200);
+    Serial.println("Modo Debug Ativado. Calibrando sensores...!");
   }
-  
-  //pinMode(BotCalibra, INPUT);
-  //pinMode(BotStart, INPUT);
-  //pinMode(BUZZ, OUTPUT);
-  // Aguarda pressionar o botão de calibração
-  if (Antropofagico == 0 ){
-    Serial.println("Calibrando sensores...!");
-  }
-  // Chama a função de calibração
   Calibracao();
-  delay(800);
-  if (Antropofagico != 0 ){
+  pinMode(pinoMultifuncao, INPUT_PULLUP); 
+
+  Serial.println("Pressione o botao para iniciar a calibracao e o programa...");
+
+  // Espera até que o botão seja pressionado (leitura vai para LOW)
+  while(digitalRead(pinoMultifuncao) == LOW) {
+    // Fica preso aqui, esperando o usuário pressionar o botão.
+    // Você pode piscar um LED aqui para dar feedback.
+    Serial.println(digitalRead(pinoMultifuncao));
+    delay(50);
+  }
+
+  // O botão foi pressionado!
+  Serial.println("Botao pressionado!");
+  
+  // Um pequeno delay para "debounce" - evitar múltiplas leituras de um só clique.
+  delay(100); 
+  // <<< ALTERADO: Imprime mensagem final apenas se não estiver em modo de produção.
+  if (MODO_PRODUCAO == 0) {
     Serial.println("======= avua fi!======");
   }
+  
   //digitalWrite(6,HIGH);
 }
 
 void loop() {
-
   Leitura();
   Seguir(); // Estado padrão ele segue a linha
+  yield();
 }

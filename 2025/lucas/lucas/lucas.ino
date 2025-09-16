@@ -23,7 +23,7 @@ unsigned long lastTuneTime = 0; // Tempo da última atualização de tuning
 const unsigned long tuneInterval = 1000; // Intervalo de tempo para ajuste
 /////////////////////////////////////////////////////////////////////////////////////
 int i = 0, j = 0;
-int Antropofagico = 1;
+int Antropofagico = 2;
 void Leitura() {
   // O loop continua lendo os canais do MUX na ordem normal (0, 1, 2, ...)
   for (int i = 0; i < QTSensores; i++) {
@@ -40,13 +40,13 @@ void Leitura() {
     // --- INÍCIO DA CORREÇÃO PARA ESTABILIZAR A LEITURA ---
 
     // 1. Damos uma pequena pausa para o MUX estabilizar o novo canal.
-    delayMicroseconds(1000); // <-- CORREÇÃO
+    //delayMicroseconds(1000);
 
     // 2. Fazemos a "leitura fantasma" para limpar a "água do copo" (tensão residual).
-    analogRead(MUX_SIG); // <-- CORREÇÃO
+    analogRead(MUX_SIG);
 
     // 3. Pausa para o conversor analógico-digital (ADC) se ajustar.
-    delayMicroseconds(1000); // <-- CORREÇÃO
+    //delayMicroseconds(1000);
     
     // 4. Agora sim, fazemos a leitura real. O valor aqui será muito mais preciso.
     int leituraAtual = analogRead(MUX_SIG); // <-- LEITURA REAL
@@ -54,18 +54,16 @@ void Leitura() {
     // --- FIM DA CORREÇÃO ---
 
 
-    // --- Armazenamento Invertido (sua lógica original mantida) ---
-    // Calcula o índice de destino invertido
-    int indiceInvertido = (QTSensores - 1) - i; 
-    // Atualiza o histórico de leituras na posição invertida
-    HistoricoLeituras[indiceInvertido][IndiceLeitura] = leituraAtual;
+    // --- Armazenamento Direto (lógica de inversão removida) ---
+    // Atualiza o histórico de leituras na posição normal
+    HistoricoLeituras[i][IndiceLeitura] = leituraAtual;
 
     long soma = 0;
     for (int k = 0; k < NumLeituras; k++) {
-      soma += HistoricoLeituras[indiceInvertido][k];
+      soma += HistoricoLeituras[i][k];
     }
-    // Armazena a média no vetor Sensor na posição invertida
-    Sensor[indiceInvertido] = soma / NumLeituras; 
+    // Armazena a média no vetor Sensor na posição normal
+    Sensor[i] = soma / NumLeituras; 
   }
 
   // O resto da sua função permanece igual
@@ -91,14 +89,14 @@ void ImprimirSensores(int Antropofagico) {
       if (i < QTSensores - 1) {
           Serial.print("| "); // Adiciona vírgula entre os sensores
       }
-  9  }
+    }
   }
   if(Antropofagico != 0){
       Serial.print(" | VeloE: " + String(VeloE) + " | VeloD: " + String(VeloD) + "|");
   Serial.println(erro); // Imprime o valor do erro
     }
 
- delay(1000);
+ //delay(1000);
 }
 
 void Discretiza() {
@@ -225,100 +223,96 @@ void Seguir() {
 }
 
 void Calibracao() {
-    const unsigned long tempoCalibracao = 5000;
-    unsigned long tempoInicial = millis();
-    const unsigned long IntervaloTempoBUZZ = 1000;
-    const int QtLeituras = 5;
-    
-    // Arrays para armazenar os maiores e menores valores de cada sensor
-    int maiores[QTSensores][QtLeituras] = {0};
-    int menores[QTSensores][QtLeituras];
+  const unsigned long tempoCalibracao = 5000;
+  unsigned long tempoInicial = millis();
+  const unsigned long IntervaloTempoBUZZ = 1000;
+  const int QtLeituras = 5;
+  
+  // Arrays para armazenar os maiores e menores valores de cada sensor
+  int maiores[QTSensores][QtLeituras] = {0};
+  int menores[QTSensores][QtLeituras];
 
-    // A inicialização pode ser mantida, pois preenche o array todo
-    for (int i = 0; i < QTSensores; i++) {
-        for (int j = 0; j < QtLeituras; j++) {
-            menores[i][j] = 1023; // Inicializa com valor máximo
-        }
+  // A inicialização pode ser mantida, pois preenche o array todo
+  for (int i = 0; i < QTSensores; i++) {
+    for (int j = 0; j < QtLeituras; j++) {
+      menores[i][j] = 1023; // Inicializa com valor máximo
+    }
+  }
+
+  // Realiza as leituras durante o tempo de calibração
+  while (millis() - tempoInicial < tempoCalibracao) {
+    if (millis() - CalibraInterval >= IntervaloTempoBUZZ) {
+      // tone(BUZZ, 20, 300);
+      CalibraInterval = millis();
     }
 
-    // Realiza as leituras durante o tempo de calibração
-    while (millis() - tempoInicial < tempoCalibracao) {
-        if (millis() - CalibraInterval >= IntervaloTempoBUZZ) {
-            // tone(BUZZ, 20, 300);
-            CalibraInterval = millis();
-        }
-
-        // O loop varre os canais do MUX na ordem física (0, 1, 2...)
-        for (int sensorIndex = 0; sensorIndex < QTSensores; sensorIndex++) {
-            // Configura os pinos do MUX para o sensor atual (não muda)
-            Mandar_Mux_Bin[0] = (sensorIndex & 0x01);
-            Mandar_Mux_Bin[1] = (sensorIndex & 0x02) >> 1;
-            Mandar_Mux_Bin[2] = (sensorIndex & 0x04) >> 2;
-            Mandar_Mux_Bin[3] = (sensorIndex & 0x08) >> 3;
-            
-            for (int j = 0; j < 4; j++) {
-                digitalWrite(MUX_S[j], Mandar_Mux_Bin[j]);
-            }
-
-            // Lê o valor do sensor (não muda)
-            int valorLido = analogRead(MUX_SIG);
-
-            // --- APLICA A INVERSÃO AQUI ---
-            // Calcula o índice de destino invertido
-            int indiceInvertido = (QTSensores - 1) - sensorIndex; // << MUDANÇA PRINCIPAL
-            if (Antropofagico != 0){
-                Serial.print("|" + String(maiores[indiceInvertido][0])); // << MUDANÇA AQUI
-            }
-            // Atualiza os menores valores no índice invertido
-            if (valorLido < menores[indiceInvertido][0]) { // << MUDANÇA AQUI
-                menores[indiceInvertido][0] = valorLido; // << MUDANÇA AQUI
-                // Bubble sort simples
-                for (int k = 0; k < QtLeituras - 1; k++) {
-                    if (menores[indiceInvertido][k] < menores[indiceInvertido][k + 1]) { // << MUDANÇA AQUI
-                        int aux = menores[indiceInvertido][k];
-                        menores[indiceInvertido][k] = menores[indiceInvertido][k + 1];
-                        menores[indiceInvertido][k + 1] = aux;
-                    }
-                }
-            }
-
-            // Atualiza os maiores valores no índice invertido
-            if (valorLido > maiores[indiceInvertido][QtLeituras - 1]) { // << MUDANÇA AQUI
-                maiores[indiceInvertido][QtLeituras - 1] = valorLido; // << MUDANÇA AQUI
-                // Bubble sort simples
-                for (int k = QtLeituras - 1; k > 0; k--) {
-                    if (maiores[indiceInvertido][k] > maiores[indiceInvertido][k - 1]) { // << MUDANÇA AQUI
-                        int aux = maiores[indiceInvertido][k];
-                        maiores[indiceInvertido][k] = maiores[indiceInvertido][k - 1];
-                        maiores[indiceInvertido][k - 1] = aux;
-                    }
-                }
-            }
-        }
-        if (Antropofagico != 0){
-            Serial.println();
-        }
-    }
-
-    // Calcula a mediana e o corte para cada sensor, usando a lógica invertida
+    // O loop varre os canais do MUX na ordem física (0, 1, 2...)
     for (int sensorIndex = 0; sensorIndex < QTSensores; sensorIndex++) {
-        // Calcula o índice invertido novamente para garantir a correspondência
-        int indiceInvertido = (QTSensores - 1) - sensorIndex; // << MUDANÇA PRINCIPAL
+      // Configura os pinos do MUX para o sensor atual (não muda)
+      Mandar_Mux_Bin[0] = (sensorIndex & 0x01);
+      Mandar_Mux_Bin[1] = (sensorIndex & 0x02) >> 1;
+      Mandar_Mux_Bin[2] = (sensorIndex & 0x04) >> 2;
+      Mandar_Mux_Bin[3] = (sensorIndex & 0x08) >> 3;
+      
+      for (int j = 0; j < 4; j++) {
+        digitalWrite(MUX_S[j], Mandar_Mux_Bin[j]);
+      }
 
-        // Acessa os dados já armazenados na ordem invertida
-        float medianaMaiores = calcularMediana(maiores[indiceInvertido], QtLeituras); // << MUDANÇA AQUI
-        float medianaMenores = calcularMediana(menores[indiceInvertido], QtLeituras); // << MUDANÇA AQUI
+      // Lê o valor do sensor (não muda)
+      int valorLido = analogRead(MUX_SIG);
 
-        // Armazena o valor de corte final na posição invertida
-        corte[indiceInvertido] = (medianaMaiores + medianaMenores) / 2; // << MUDANÇA AQUI
-
-        // Imprime os resultados. Note que usamos 'indiceInvertido' para o log
-        // ser consistente com a ordem do array (Sensor 0, Sensor 1, etc.).
-        if (Antropofagico != 0){
-            Serial.print("Sensor " + String(indiceInvertido) + " - Mediana Maiores: " + String(medianaMenores) + ", Mediana Menores: " + String(medianaMaiores) + ", Corte: " + String(corte[indiceInvertido]) + "\n");
+      // --- LÓGICA DE INVERSÃO REMOVIDA ---
+      // Os dados agora são processados no índice original 'sensorIndex'
+      if (Antropofagico != 0){
+        Serial.print("|" + String(maiores[sensorIndex][0]));
+      }
+      
+      // Atualiza os menores valores no índice normal
+      if (valorLido < menores[sensorIndex][0]) {
+        menores[sensorIndex][0] = valorLido;
+        // Bubble sort simples
+        for (int k = 0; k < QtLeituras - 1; k++) {
+          if (menores[sensorIndex][k] < menores[sensorIndex][k + 1]) {
+            int aux = menores[sensorIndex][k];
+            menores[sensorIndex][k] = menores[sensorIndex][k + 1];
+            menores[sensorIndex][k + 1] = aux;
+          }
         }
+      }
+
+      // Atualiza os maiores valores no índice normal
+      if (valorLido > maiores[sensorIndex][QtLeituras - 1]) {
+        maiores[sensorIndex][QtLeituras - 1] = valorLido;
+        // Bubble sort simples
+        for (int k = QtLeituras - 1; k > 0; k--) {
+          if (maiores[sensorIndex][k] > maiores[sensorIndex][k - 1]) {
+            int aux = maiores[sensorIndex][k];
+            maiores[sensorIndex][k] = maiores[sensorIndex][k - 1];
+            maiores[sensorIndex][k - 1] = aux;
+          }
+        }
+      }
     }
-    yield();
+    if (Antropofagico != 0){
+      Serial.println();
+    }
+  }
+
+  // Calcula a mediana e o corte para cada sensor, usando a lógica normal
+  for (int sensorIndex = 0; sensorIndex < QTSensores; sensorIndex++) {
+    // Acessa os dados já armazenados na ordem normal
+    float medianaMaiores = calcularMediana(maiores[sensorIndex], QtLeituras);
+    float medianaMenores = calcularMediana(menores[sensorIndex], QtLeituras);
+
+    // Armazena o valor de corte final na posição normal
+    corte[sensorIndex] = (medianaMaiores + medianaMenores) / 2;
+
+    // Imprime os resultados na ordem correta (Sensor 0, Sensor 1, etc.)
+    if (Antropofagico != 0){
+      Serial.print("Sensor " + String(sensorIndex) + " - Mediana Maiores: " + String(medianaMenores) + ", Mediana Menores: " + String(medianaMaiores) + ", Corte: " + String(corte[sensorIndex]) + "\n");
+    }
+  }
+  yield();
 }
 float calcularMediana(int valores[], int tamanho) {
     // Ordena o array

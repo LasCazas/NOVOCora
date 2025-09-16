@@ -8,7 +8,7 @@
 #define Delta 20
 #define DifTras 18
 //////////////////////////////////////// BOTOES ////////////////////////////////////////
-//#define BotCalibra A3
+#define pinoMultifuncao A0
 //#define BotStart A0
 //#define BUZZ A1
 //////////////////////////////////////// PID ////////////////////////////////////////
@@ -30,9 +30,9 @@ const int pwmMotorE = 4; // d2Velocidade (PWM) do motor direito
 const int dirMotorE = 2; //d4  Direção (DIR) do motor direito
 
 
-#define PWME 120
-#define PWMD 120
-#define MAXR 150
+#define PWME 150
+#define PWMD 150
+#define MAXR 200
 //////////////////////////////////////// AUXLIARES ////////////////////////////////////////
 #define Parar 0
 #define Frente 1
