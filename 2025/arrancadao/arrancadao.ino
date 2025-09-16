@@ -341,11 +341,29 @@ float calcularMediana(int valores[], int tamanho) {
         return valores[tamanho / 2];
     }
 }
+void arrancadaGradual() {
+  // Garante que os motores estão configurados para andar para frente
+  digitalWrite(dirMotorE, LOW);
+  digitalWrite(dirMotorD, LOW);
 
+  // Define a velocidade de rampa. Use PWME ou o valor que for sua velocidade base.
+  int velocidadeBase = PWME; 
+
+  // Loop que aumenta a velocidade gradualmente
+  for (int velocidade = 0; velocidade <= velocidadeBase; velocidade++) {
+    analogWrite(pwmMotorE, velocidade);
+    analogWrite(pwmMotorD, velocidade);
+    
+    // Pequena pausa para criar o efeito de aceleração. 
+    // Aumente este valor para uma arrancada mais lenta e suave.
+    // Diminua para uma arrancada mais rápida.
+    delay(15); 
+  }
+}
 void setup() {
   // Sensores
   pinMode(MUX_SIG, INPUT);
-  for (i = 0; i < 4; i++) {
+  for (int i = 0; i < 4; i++) {
       pinMode(MUX_S[i], OUTPUT);
   }
   // Motores
@@ -362,25 +380,26 @@ void setup() {
   Calibracao();
   pinMode(pinoMultifuncao, INPUT_PULLUP); 
 
-  Serial.println("Pressione o botao para iniciar a calibracao e o programa...");
-
-  // Espera até que o botão seja pressionado (leitura vai para LOW)
-  while(digitalRead(pinoMultifuncao) == LOW) {
-    // Fica preso aqui, esperando o usuário pressionar o botão.
-    // Você pode piscar um LED aqui para dar feedback.
-    Serial.println(digitalRead(pinoMultifuncao));
-    delay(50);
+  // Aguarda o botão ser pressionado para iniciar
+  while(digitalRead(pinoMultifuncao) == HIGH) {
+    // Laço vazio, apenas esperando o botão...
+    yield(); // Boa prática para ESPs e outras arquiteturas
   }
 
   // O botão foi pressionado!
   Serial.println("Botao pressionado!");
   
   // Um pequeno delay para "debounce" - evitar múltiplas leituras de um só clique.
-  delay(100); 
+  delay(600); 
   // <<< ALTERADO: Imprime mensagem final apenas se não estiver em modo de produção.
   if (MODO_PRODUCAO == 0) {
     Serial.println("======= avua fi!======");
   }
+  
+  // ==========================================================
+  // /// NOVO: CHAMA A FUNÇÃO DE ARRANCADA GRADUAL AQUI ///
+  // ==========================================================
+  arrancadaGradual();
   
   //digitalWrite(6,HIGH);
 }

@@ -1,177 +1,179 @@
 #include "Constante.c"
 
-int Sensor[QTSensores] = {0}; // Inicializa zerando tudo
-bool SensorBIN[QTSensores] = {1};
-int HistoricoLeituras[QTSensores][NumLeituras];  // Armazena as últimas 5 leituras de cada sensor
-int IndiceLeitura = 0;                    // Índice de controle para o histórico de leituras
+// ----------------------- ARRAYS / ESTADO -----------------------
+int Sensor[QTSensoresReal] = {0}; // valores médios
+bool SensorBIN[QTSensoresReal];   // discretizados
+int HistoricoLeituras[QTSensoresReal][NumLeituras];  // últimas leituras por sensor
+int IndiceLeitura = 0;
 
 bool Mandar_Mux_Bin[4] = {0};
-int corte[QTSensores] = {0};
-// Arrays globais para guardar min e max de cada sensor
-int menores[QTSensores][1];
-int maiores[QTSensores][1];
+
+// CORREÇÃO: corte tem que ter tamanho lógico (QTSensoresReal)
+int corte[QTSensoresReal] = {0};
+
+// Guarda min e max por sensor lógico (simplificado)
+int menores[QTSensoresReal];
+int maiores[QTSensoresReal];
+
+// ----------------------- MODO / PID -----------------------
+const int MODO_PRODUCAO = 1; // 0 = Debug (Serial ON), 1 = Produção (Serial OFF)
+const int SEM_MOTOR = !MODO_PRODUCAO;
 
 int P = 0, I = 0, D = 0, PID = 0;
 float erro = 0, erroA = 0;
-int VeloE, VeloD;
-unsigned long CalibraInterval = 0; // Tempo de inicia de calibracao
-//////////////////////////////////////// PID ////////////////////////////////////////
-float Kp = 10, Ki = 0.0, Kd = 0.0; // Parâmetros do PID
-float targetValue = 0; // Valor alvo
-bool autoTuningEnabled = false; // Habilitar/desabilitar auto-tuning
-unsigned long lastTuneTime = 0; // Tempo da última atualização de tuning
-const unsigned long tuneInterval = 1000; // Intervalo de tempo para ajuste
-/////////////////////////////////////////////////////////////////////////////////////
+int VeloE = 0, VeloD = 0;
+
+unsigned long CalibraInterval = 0;
+
+// PID
+float Kp = 15, Ki = 0.08, Kd = 3;
+float targetValue = 0;
+bool autoTuningEnabled = false;
+unsigned long lastTuneTime = 0;
+const unsigned long tuneInterval = 1000;
+
+// misc
 int i = 0, j = 0;
 int Antropofagico = 2;
+
+unsigned long tempoPerdaLinha = 0;
+const unsigned long tempoLimiteParada = 850; 
+bool roboParado = false;
+
+// ----------------------- FUNÇÕES -----------------------
+
 void Leitura() {
-  // O loop continua lendo os canais do MUX na ordem normal (0, 1, 2, ...)
+  int indiceReal = 0;
+
   for (int i = 0; i < QTSensores; i++) {
-    // --- Configuração do MUX (lógica original mantida) ---
-    Mandar_Mux_Bin[0] = (i & 0x01); // LSB
-    Mandar_Mux_Bin[1] = (i & 0x02) >> 1; // Bit 1
-    Mandar_Mux_Bin[2] = (i & 0x04) >> 2; // Bit 2
-    Mandar_Mux_Bin[3] = (i & 0x08) >> 3; // MSB
+    // Ignora canais físicos configurados (como antes)
+    if (i == 1 || i == 9) {
+      continue;
+    }
+
+    // Configura bits do MUX
+    Mandar_Mux_Bin[0] = (i & 0x01);
+    Mandar_Mux_Bin[1] = (i & 0x02) >> 1;
+    Mandar_Mux_Bin[2] = (i & 0x04) >> 2;
+    Mandar_Mux_Bin[3] = (i & 0x08) >> 3;
 
     for (int j = 0; j < 4; j++) {
       digitalWrite(MUX_S[j], Mandar_Mux_Bin[j]);
     }
 
-    // --- INÍCIO DA CORREÇÃO PARA ESTABILIZAR A LEITURA ---
+    // Pequeno tempo para estabilizar o MUX/Entrada analógica
+    delayMicroseconds(20);
+    int leituraAtual = analogRead(MUX_SIG);
 
-    // 1. Damos uma pequena pausa para o MUX estabilizar o novo canal.
-    //delayMicroseconds(1000);
+    // Mapeamento invertido - primeiro lido -> última posição lógica
+    int indiceDestino = (QTSensoresReal - 1) - indiceReal;
 
-    // 2. Fazemos a "leitura fantasma" para limpar a "água do copo" (tensão residual).
-    analogRead(MUX_SIG);
+    // Segurança: só escreve se dentro dos limites lógicos
+    if (indiceDestino >= 0 && indiceDestino < QTSensoresReal) {
+      HistoricoLeituras[indiceDestino][IndiceLeitura] = leituraAtual;
 
-    // 3. Pausa para o conversor analógico-digital (ADC) se ajustar.
-    //delayMicroseconds(1000);
-    
-    // 4. Agora sim, fazemos a leitura real. O valor aqui será muito mais preciso.
-    int leituraAtual = analogRead(MUX_SIG); // <-- LEITURA REAL
-
-    // --- FIM DA CORREÇÃO ---
-
-
-    // --- Armazenamento Direto (lógica de inversão removida) ---
-    // Atualiza o histórico de leituras na posição normal
-    HistoricoLeituras[i][IndiceLeitura] = leituraAtual;
-
-    long soma = 0;
-    for (int k = 0; k < NumLeituras; k++) {
-      soma += HistoricoLeituras[i][k];
+      long soma = 0;
+      for (int k = 0; k < NumLeituras; k++) {
+        soma += HistoricoLeituras[indiceDestino][k];
+      }
+      Sensor[indiceDestino] = soma / NumLeituras;
+    } else {
+      // se algo errado, evita overflow e ignora
     }
-    // Armazena a média no vetor Sensor na posição normal
-    Sensor[i] = soma / NumLeituras; 
+
+    indiceReal++;
+    if (indiceReal >= QTSensoresReal) break; // segurança extra
   }
 
-  // O resto da sua função permanece igual
   IndiceLeitura = (IndiceLeitura + 1) % NumLeituras;
   ImprimirSensores(Antropofagico);
   Discretiza();
 }
 
 void ImprimirSensores(int Antropofagico) {
-    
-  if (Antropofagico == 1){
-    for (int i = 0; i < QTSensores; i++) {
+  if (MODO_PRODUCAO == 0) {
+    if (Antropofagico == 1) {
+      for (int i = 0; i < QTSensoresReal; i++) {
         Serial.print(Sensor[i]);
-        if (i < QTSensores - 1) {
-            Serial.print("| "); // Adiciona vírgula entre os sensores
-        }
-    }
-   
-  }
-  else if (Antropofagico == 2){
-    for (int i = 0; i < QTSensores; i++) {
-      Serial.print(SensorBIN[i]);
-      if (i < QTSensores - 1) {
-          Serial.print("| "); // Adiciona vírgula entre os sensores
+        if (i < QTSensoresReal - 1) Serial.print("| ");
+      }
+    } else if (Antropofagico == 2) {
+      for (int i = 0; i < QTSensoresReal; i++) {
+        Serial.print(SensorBIN[i]);
+        if (i < QTSensoresReal - 1) Serial.print("| ");
       }
     }
-  }
-  if(Antropofagico != 0){
-      Serial.print(" | VeloE: " + String(VeloE) + " | VeloD: " + String(VeloD) + "|");
-  Serial.println(erro); // Imprime o valor do erro
-    }
 
- //delay(1000);
+    if (Antropofagico != 0) {
+      Serial.print(" | VeloE: " + String(VeloE) + " | VeloD: " + String(VeloD) + " | ");
+      Serial.println(erro);
+    }
+  }
 }
 
 void Discretiza() {
-  for (int i = 0; i < QTSensores; i++) {
-      // Discretiza o valor com base no valor de corte
-      if (Sensor[i] > corte[i]) {
-          SensorBIN[i] = true; // Estado ALTO
-      } else {
-          SensorBIN[i] = false; // Estado BAIXO
-      }
+  for (int i = 0; i < QTSensoresReal; i++) {
+    // Se não calibrado, usa meio-range como fallback
+    int corteLocal = (corte[i] > 0) ? corte[i] : 512;
+    if (Sensor[i] > corteLocal) {
+      SensorBIN[i] = BRANCO;
+    } else {
+      SensorBIN[i] = PRETO;
+    }
   }
 }
 
 void CalculaErro() {
-    long soma = 0;
-    int ativos = 0;
+  long soma = 0;
+  int ativos = 0;
 
-    for (int i = 0; i < QTSensores; i++) {
-        if (SensorBIN[i] == BRANCO) {  // Detecta a linha
-            soma += i * 1000;         // Peso proporcional à posição
-            ativos++;
-        }
+  for (int i = 0; i < QTSensoresReal; i++) {
+    if (SensorBIN[i] == BRANCO) {
+      soma += i * 1000;
+      ativos++;
     }
+  }
 
-    if (ativos > 0) {
-        float posicaoMedia = (float)soma / ativos;  
-        erro = (posicaoMedia - (SENSOR_CENTRAL * 1000)) / 1000.0;
-    } else {
-        erro = erroA; // Mantém o erro anterior se não encontrou linha
-    }
+  // determina centro lógico com checagem de limites
+  int centroIndex = SENSOR_CENTRAL;
+  if (centroIndex < 0 || centroIndex >= QTSensoresReal) centroIndex = QTSensoresReal / 2;
+
+  if (ativos > 0) {
+    float posicaoMedia = (float)soma / ativos;
+    erro = (posicaoMedia - (centroIndex * 1000)) / 1000.0;
+  } else {
+    erro = erroA; // mantém erro anterior
+  }
 }
 
-
 void CalculaPID() {
-  // --- Cálculo dos termos ---
   P = erro * Kp;
   I = I + erro;
   D = erro - erroA;
 
-  AntiWindUp(); // Limita a parte integrativa
+  AntiWindUp();
 
-  // --- Saída PID ---
   PID = P + (Ki * I) + (Kd * D);
-
-  // --- Atualiza erro anterior ---
   erroA = erro;
 }
 
-void AntiWindUp() { 
-  // Zera a parte integrativa quando o erro some ou inverte
-  if (erro == 0) {
-    I = 0;
-  }
-  if ((erro > 0 && erroA < 0) || (erro < 0 && erroA > 0)) {
-    I = 0;
-  }
+void AntiWindUp() {
+  if (erro == 0) I = 0;
+  if ((erro > 0 && erroA < 0) || (erro < 0 && erroA > 0)) I = 0;
 }
 
 void AutoTunePID() {
   if (autoTuningEnabled && (millis() - lastTuneTime > tuneInterval)) {
-    // Ajuste proporcional adaptativo simples
-    if (erro > 0) {
-      Kp += 0.1;
-    } else {
-      Kp -= 0.1;
-    }
+    if (erro > 0) Kp += 0.1;
+    else Kp -= 0.1;
 
-    // Pequeno ajuste em Ki e Kd
     Ki += 0.01;
     Kd += 0.001;
 
-    // Evita valores explosivos
-    Kp = constrain(Kp, 0, 10);
-    Ki = constrain(Ki, 0, 1);
-    Kd = constrain(Kd, 0, 1);
+    // limites (ajuste conforme quiser)
+    Kp = constrain(Kp, 0, 50);
+    Ki = constrain(Ki, 0, 5);
+    Kd = constrain(Kd, 0, 5);
 
     lastTuneTime = millis();
   }
@@ -186,12 +188,14 @@ void Seguir() {
   PID = constrain(PID, -MAXR, MAXR);
 
   // --- Calcula velocidades ---
-  if (PID > 0) { // Correção para direita
+  if (PID > 0) {
+    // Correção para direita
     VeloE = PWME + PID;
     VeloD = PWMD - PID;
-  } else {       // Correção para esquerda
-    VeloE = PWME + PID;  // PID é negativo
-    VeloD = PWMD - PID;  // subtrair negativo = somar
+  } else {
+    // Correção para esquerda
+    VeloE = PWME + PID; // PID é negativo
+    VeloD = PWMD - PID; // subtrair negativo = somar
   }
 
   // --- Limita velocidades ---
@@ -199,173 +203,178 @@ void Seguir() {
   VeloD = constrain(VeloD, 0, MAXR);
 
   // --- Controle dos motores ---
-  if (VeloE >= MAXR && VeloD <= 0) {
-    // Curva fechada esquerda
-    digitalWrite(dirMotorE, LOW);   // Motor E frente
-    digitalWrite(dirMotorD, HIGH);  // Motor D trás
-    analogWrite(pwmMotorE, VeloE);
-    analogWrite(pwmMotorD, VeloE);
-
-  } else if (VeloD >= MAXR && VeloE <= 0) {
-    // Curva fechada direita
-    digitalWrite(dirMotorE, HIGH);  // Motor E trás
-    digitalWrite(dirMotorD, LOW);   // Motor D frente
-    analogWrite(pwmMotorE, VeloD);
-    analogWrite(pwmMotorD, VeloD);
-
-  } else {
-    // Movimento normal (ambos frente)
-    digitalWrite(dirMotorE, LOW);
-    digitalWrite(dirMotorD, LOW);
-    analogWrite(pwmMotorE, VeloE);
-    analogWrite(pwmMotorD, VeloD);
+  if (!SEM_MOTOR) {
+    if (VeloE >= MAXR && VeloD <= 0) {
+      // Curva fechada esquerda
+      digitalWrite(dirMotorE, LOW);  // Motor E frente
+      digitalWrite(dirMotorD, HIGH); // Motor D trás
+      analogWrite(pwmMotorE, VeloE);
+      analogWrite(pwmMotorD, VeloE);
+    } else if (VeloD >= MAXR && VeloE <= 0) {
+      // Curva fechada direita
+      digitalWrite(dirMotorE, HIGH); // Motor E trás
+      digitalWrite(dirMotorD, LOW);  // Motor D frente
+      analogWrite(pwmMotorE, VeloD);
+      analogWrite(pwmMotorD, VeloD);
+    } else {
+      // Movimento normal (ambos frente)
+      digitalWrite(dirMotorE, LOW);
+      digitalWrite(dirMotorD, LOW);
+      analogWrite(pwmMotorE, VeloE);
+      analogWrite(pwmMotorD, VeloD);
+    }
   }
 }
-
 void Calibracao() {
   const unsigned long tempoCalibracao = 5000;
   unsigned long tempoInicial = millis();
-  const unsigned long IntervaloTempoBUZZ = 1000;
-  const int QtLeituras = 5;
-  
-  // Arrays para armazenar os maiores e menores valores de cada sensor
-  int maiores[QTSensores][QtLeituras] = {0};
-  int menores[QTSensores][QtLeituras];
 
-  // A inicialização pode ser mantida, pois preenche o array todo
-  for (int i = 0; i < QTSensores; i++) {
-    for (int j = 0; j < QtLeituras; j++) {
-      menores[i][j] = 1023; // Inicializa com valor máximo
-    }
+  // CORREÇÃO: arrays de calibração no tamanho lógico
+  int calibMin[QTSensoresReal];
+  int calibMax[QTSensoresReal];
+
+  for (int i = 0; i < QTSensoresReal; i++) {
+    calibMin[i] = 1023;
+    calibMax[i] = 0;
   }
 
-  // Realiza as leituras durante o tempo de calibração
-  while (millis() - tempoInicial < tempoCalibracao) {
-    if (millis() - CalibraInterval >= IntervaloTempoBUZZ) {
-      // tone(BUZZ, 20, 300);
-      CalibraInterval = millis();
-    }
+  if (MODO_PRODUCAO == 0) {
+    Serial.println("Iniciando calibracao...");
+  }
 
-    // O loop varre os canais do MUX na ordem física (0, 1, 2...)
+  while (millis() - tempoInicial < tempoCalibracao) {
+    int indiceReal = 0;
     for (int sensorIndex = 0; sensorIndex < QTSensores; sensorIndex++) {
-      // Configura os pinos do MUX para o sensor atual (não muda)
+      if (sensorIndex == 1 || sensorIndex == 9) continue;
+
       Mandar_Mux_Bin[0] = (sensorIndex & 0x01);
       Mandar_Mux_Bin[1] = (sensorIndex & 0x02) >> 1;
       Mandar_Mux_Bin[2] = (sensorIndex & 0x04) >> 2;
       Mandar_Mux_Bin[3] = (sensorIndex & 0x08) >> 3;
-      
-      for (int j = 0; j < 4; j++) {
-        digitalWrite(MUX_S[j], Mandar_Mux_Bin[j]);
-      }
+      for (int j = 0; j < 4; j++) digitalWrite(MUX_S[j], Mandar_Mux_Bin[j]);
 
-      // Lê o valor do sensor (não muda)
+      delayMicroseconds(20);
       int valorLido = analogRead(MUX_SIG);
 
-      // --- LÓGICA DE INVERSÃO REMOVIDA ---
-      // Os dados agora são processados no índice original 'sensorIndex'
-      if (Antropofagico != 0){
-        Serial.print("|" + String(maiores[sensorIndex][0]));
-      }
-      
-      // Atualiza os menores valores no índice normal
-      if (valorLido < menores[sensorIndex][0]) {
-        menores[sensorIndex][0] = valorLido;
-        // Bubble sort simples
-        for (int k = 0; k < QtLeituras - 1; k++) {
-          if (menores[sensorIndex][k] < menores[sensorIndex][k + 1]) {
-            int aux = menores[sensorIndex][k];
-            menores[sensorIndex][k] = menores[sensorIndex][k + 1];
-            menores[sensorIndex][k + 1] = aux;
-          }
-        }
+      int indiceDestino = (QTSensoresReal - 1) - indiceReal;
+      if (indiceDestino >= 0 && indiceDestino < QTSensoresReal) {
+        if (valorLido < calibMin[indiceDestino]) calibMin[indiceDestino] = valorLido;
+        if (valorLido > calibMax[indiceDestino]) calibMax[indiceDestino] = valorLido;
       }
 
-      // Atualiza os maiores valores no índice normal
-      if (valorLido > maiores[sensorIndex][QtLeituras - 1]) {
-        maiores[sensorIndex][QtLeituras - 1] = valorLido;
-        // Bubble sort simples
-        for (int k = QtLeituras - 1; k > 0; k--) {
-          if (maiores[sensorIndex][k] > maiores[sensorIndex][k - 1]) {
-            int aux = maiores[sensorIndex][k];
-            maiores[sensorIndex][k] = maiores[sensorIndex][k - 1];
-            maiores[sensorIndex][k - 1] = aux;
-          }
-        }
-      }
+      indiceReal++;
+      if (indiceReal >= QTSensoresReal) break;
     }
-    if (Antropofagico != 0){
-      Serial.println();
-    }
+    yield();
   }
 
-  // Calcula a mediana e o corte para cada sensor, usando a lógica normal
-  for (int sensorIndex = 0; sensorIndex < QTSensores; sensorIndex++) {
-    // Acessa os dados já armazenados na ordem normal
-    float medianaMaiores = calcularMediana(maiores[sensorIndex], QtLeituras);
-    float medianaMenores = calcularMediana(menores[sensorIndex], QtLeituras);
+  if (MODO_PRODUCAO == 0) Serial.println("\nCalibracao finalizada!");
 
-    // Armazena o valor de corte final na posição normal
-    corte[sensorIndex] = (medianaMaiores + medianaMenores) / 2;
-
-    // Imprime os resultados na ordem correta (Sensor 0, Sensor 1, etc.)
-    if (Antropofagico != 0){
-      Serial.print("Sensor " + String(sensorIndex) + " - Mediana Maiores: " + String(medianaMenores) + ", Mediana Menores: " + String(medianaMaiores) + ", Corte: " + String(corte[sensorIndex]) + "\n");
+  // Calcula cortes e salva min/max
+  for (int i = 0; i < QTSensoresReal; i++) {
+    corte[i] = (calibMax[i] + calibMin[i]) / 2;
+    menores[i] = calibMin[i];
+    maiores[i] = calibMax[i];
+    if (MODO_PRODUCAO == 0) {
+      Serial.print("Sensor LOGICO " + String(i));
+      Serial.print(" | Min: " + String(calibMin[i]));
+      Serial.print(" | Max: " + String(calibMax[i]));
+      Serial.println(" | Corte: " + String(corte[i]));
     }
   }
-  yield();
 }
-float calcularMediana(int valores[], int tamanho) {
-    // Ordena o array
-    for (int i = 0; i < tamanho - 1; i++) {
-        for (int j = 0; j < tamanho - i - 1; j++) {
-            if (valores[j] > valores[j + 1]) {
-                int temp = valores[j];
-                valores[j] = valores[j + 1];
-                valores[j + 1] = temp;
-            }
-        }
-    }
-    // Retorna a mediana
-    if (tamanho % 2 == 0) {
-        return (valores[tamanho / 2 - 1] + valores[tamanho / 2]) / 2.0;
-    } else {
-        return valores[tamanho / 2];
-    }
+
+void pararMotores() {
+  analogWrite(pwmMotorE, 0);
+  analogWrite(pwmMotorD, 0);
+  digitalWrite(dirMotorE, LOW);
+  digitalWrite(dirMotorD, LOW);
+}
+
+/**
+ * @brief Verifica se todos os sensores estão no PRETO (perda total)
+ */
+bool verificaPerdaTotalLinha() {
+  // determina centro lógico com checagem
+  int centroIndex = SENSOR_CENTRAL;
+  if (centroIndex < 0 || centroIndex >= QTSensoresReal) centroIndex = QTSensoresReal / 2;
+
+  int inicioSensoresCentrais = centroIndex - 2;
+  int fimSensoresCentrais = centroIndex + 2;
+  if (inicioSensoresCentrais < 0) inicioSensoresCentrais = 0;
+  if (fimSensoresCentrais >= QTSensoresReal) fimSensoresCentrais = QTSensoresReal - 1;
+
+  // checa pontas (usando índices lógicos)
+  if (SensorBIN[0] == BRANCO || SensorBIN[QTSensoresReal - 1] == BRANCO) {
+    return false;
+  }
+
+  // checa bloco central
+  for (int i = inicioSensoresCentrais; i <= fimSensoresCentrais; i++) {
+    if (SensorBIN[i] == BRANCO) return false;
+  }
+
+  return true;
 }
 
 void setup() {
-  // Sensores
   pinMode(MUX_SIG, INPUT);
-  for (i = 0; i < 4; i++) {
-      pinMode(MUX_S[i], OUTPUT);
-  }
-  // Motores
+  for (int i = 0; i < 4; i++) pinMode(MUX_S[i], OUTPUT);
+
   pinMode(pwmMotorE, OUTPUT);
   pinMode(dirMotorE, OUTPUT);
   pinMode(pwmMotorD, OUTPUT);
   pinMode(dirMotorD, OUTPUT);
-  if (Antropofagico != 0 ){
+
+  // inicializa arrays
+  for (int i = 0; i < QTSensoresReal; i++) {
+    Sensor[i] = 0;
+    HistoricoLeituras[i][0] = HistoricoLeituras[i][1] = 0;
+    SensorBIN[i] = PRETO;
+    corte[i] = 0;
+    menores[i] = 0;
+    maiores[i] = 0;
+    for (int k = 0; k < NumLeituras; k++) HistoricoLeituras[i][k] = 512;
+  }
+
+  if (MODO_PRODUCAO == 0) {
     Serial.begin(115200);
+    Serial.println("Modo Debug Ativado. Calibrando sensores...!");
   }
-  
-  //pinMode(BotCalibra, INPUT);
-  //pinMode(BotStart, INPUT);
-  //pinMode(BUZZ, OUTPUT);
-  // Aguarda pressionar o botão de calibração
-  if (Antropofagico == 0 ){
-    Serial.println("Calibrando sensores...!");
-  }
-  // Chama a função de calibração
+
   Calibracao();
-  delay(800);
-  if (Antropofagico != 0 ){
+
+  if (MODO_PRODUCAO == 0) {
     Serial.println("======= avua fi!======");
   }
-  //digitalWrite(6,HIGH);
 }
 
 void loop() {
-
   Leitura();
-  Seguir(); // Estado padrão ele segue a linha
+
+  if (roboParado) {
+    pararMotores();
+    return;
+  }
+
+  if (MODO_PRODUCAO == 0) {
+    Serial.println(verificaPerdaTotalLinha());
+  }
+
+  if (verificaPerdaTotalLinha()) {
+    if (tempoPerdaLinha == 0) tempoPerdaLinha = millis();
+  } else {
+    tempoPerdaLinha = 0;
+  }
+
+  if (tempoPerdaLinha != 0 && (millis() - tempoPerdaLinha > tempoLimiteParada)) {
+    roboParado = true;
+    if (MODO_PRODUCAO == 0) Serial.println("Linha perdida por mais de tempo limite. PARANDO!");
+  }
+
+  if (!roboParado) {
+    Seguir();
+  }
+
+  yield();
 }

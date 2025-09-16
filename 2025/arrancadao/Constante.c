@@ -18,8 +18,8 @@
 #define SENSOR_CENTRAL (QTSensores / 2)
 #define MUX_SIG A0
 const int MUX_S[4] = {14,12,13,15}; // Pinos do mux {A,B,C,D}0,4,5,16
-#define BRANCO 0
-#define PRETO 1
+#define BRANCO 1
+#define PRETO 0
 #define NumLeituras 2
 //////////////////////////////////////// MOTOR ////////////////////////////////////////
 const int pwmMotorD = 5; //d1 Velocidade (PWM) do motor esquerdo
@@ -30,9 +30,9 @@ const int pwmMotorE = 4; // d2Velocidade (PWM) do motor direito
 const int dirMotorE = 2; //d4  Direção (DIR) do motor direito
 
 
-#define PWME 150
-#define PWMD 150
-#define MAXR 200
+#define PWME 180
+#define PWMD 180
+#define MAXR 220
 //////////////////////////////////////// AUXLIARES ////////////////////////////////////////
 #define Parar 0
 #define Frente 1

@@ -8,16 +8,17 @@
 #define Delta 20
 #define DifTras 18
 //////////////////////////////////////// BOTOES ////////////////////////////////////////
-//#define BotCalibra A3
+#define pinoMultifuncao A0
 //#define BotStart A0
 //#define BUZZ A1
 //////////////////////////////////////// PID ////////////////////////////////////////
 
 //////////////////////////////////////// SENSOR ////////////////////////////////////////
 #define QTSensores 11
+#define QTSensoresReal 9
 #define SENSOR_CENTRAL (QTSensores / 2)
 #define MUX_SIG A0
-const int MUX_S[4] = {14,12,13,15}; // Pinos do mux {A,B,C,D
+const int MUX_S[4] = {14,12,13,15}; // Pinos do mux {A,B,C,D}0,4,5,16
 #define BRANCO 0
 #define PRETO 1
 #define NumLeituras 2
@@ -30,9 +31,9 @@ const int pwmMotorE = 4; // d2Velocidade (PWM) do motor direito
 const int dirMotorE = 2; //d4  Direção (DIR) do motor direito
 
 
-#define PWME 80
-#define PWMD 80
-#define MAXR 100
+#define PWME 130
+#define PWMD 130
+#define MAXR 150
 //////////////////////////////////////// AUXLIARES ////////////////////////////////////////
 #define Parar 0
 #define Frente 1

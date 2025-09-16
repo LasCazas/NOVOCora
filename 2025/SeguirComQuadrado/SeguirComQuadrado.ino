@@ -4,6 +4,8 @@ int Sensor[QTSensores] = {0}; // Inicializa zerando tudo
 bool SensorBIN[QTSensores] = {1};
 int HistoricoLeituras[QTSensores][NumLeituras];  // Armazena as últimas 5 leituras de cada sensor
 int IndiceLeitura = 0;                    // Índice de controle para o histórico de leituras
+const int MODO_PRODUCAO = 1; // 0 = Modo Debug (Serial ATIVO), 1 = Modo Produção (Serial DESATIVADO)
+const int SEM_MOTOR = !MODO_PRODUCAO;
 
 bool Mandar_Mux_Bin[4] = {0};
 int corte[QTSensores] = {0};
@@ -16,7 +18,7 @@ float erro = 0, erroA = 0;
 int VeloE, VeloD;
 unsigned long CalibraInterval = 0; // Tempo de inicia de calibracao
 //////////////////////////////////////// PID ////////////////////////////////////////
-float Kp = 10, Ki = 0.0, Kd = 0.0; // Parâmetros do PID
+float Kp = 15, Ki = 0.08, Kd = 3; // Parâmetros do PID
 float targetValue = 0; // Valor alvo
 bool autoTuningEnabled = false; // Habilitar/desabilitar auto-tuning
 unsigned long lastTuneTime = 0; // Tempo da última atualização de tuning
@@ -24,7 +26,7 @@ const unsigned long tuneInterval = 1000; // Intervalo de tempo para ajuste
 /////////////////////////////////////////////////////////////////////////////////////
 int i = 0, j = 0;
 int Antropofagico = 2;
-bool isTest = 1;
+
 // Variáveis para o sistema de quadrados e rotatória
 int contadorQuadradosEsquerda = 0; // Contador de quadrados no sensor da esquerda
 int contadorQuadradosDireita = 0;  // Contador de quadrados no sensor da direita
@@ -62,18 +64,19 @@ void Leitura() {
 
     // --- Armazenamento Invertido ---
     // Calcula o índice de destino invertido
-    int indiceInvertido = (QTSensores - 1) - i; 
+    int indiceInvertido = (QTSensores - 1) - i; // 
     // Atualiza o histórico de leituras na posição invertida
-    HistoricoLeituras[indiceInvertido][IndiceLeitura] = leituraAtual; 
+    HistoricoLeituras[indiceInvertido][IndiceLeitura] = leituraAtual; // 
 
     long soma = 0; // Usar 'long' para a soma evita estouro (overflow)
     for (int k = 0; k < NumLeituras; k++) {
-      soma += HistoricoLeituras[indiceInvertido][k]; 
+      soma += HistoricoLeituras[indiceInvertido][k]; // 
     }
     // Armazena a média no vetor Sensor na posição invertida
-    Sensor[indiceInvertido] = soma / NumLeituras; 
+    Sensor[indiceInvertido] = soma / NumLeituras; // 
   }
 
+  // O resto da função permanece igual
   // Atualiza o índice de controle para o histórico de leituras (circular)
   IndiceLeitura = (IndiceLeitura + 1) % NumLeituras;
 
@@ -85,50 +88,60 @@ void Leitura() {
   ContagemQuadrados();
 }
 void ContagemQuadrados() {
-  static unsigned long ultimaContagemEsquerda = 0;
-  static unsigned long ultimaContagemDireita = 0;
-  const unsigned long debounceInterval = 200; // Intervalo mínimo entre contagens (ms)
+  // --- Configurações ---
+  static unsigned long ultimaContagem[2] = {0, 0};   // 0 = esquerda, 1 = direita
+  const unsigned long debounceInterval = 200;        // ms
+  const int maxQuadrados = 4;
 
-  bool currentSensorEsquerda = (SensorBIN[sensorEsquerdaIndex] == BRANCO);
-  bool currentSensorDireita = (SensorBIN[sensorDireitaIndex] == BRANCO);
+  unsigned long now = millis();
 
+  // --- Leitura segura dos sensores vizinhos (evita out-of-bounds) ---
+  bool sEsq = false;
+  bool sDir = false;
+  // supondo QTSensores disponível:
+  if (sensorEsquerdaIndex >= 0 && sensorEsquerdaIndex < QTSensores) {
+    sEsq = (SensorBIN[sensorEsquerdaIndex] == BRANCO);
+    if (sensorEsquerdaIndex + 1 < QTSensores) sEsq = sEsq || (SensorBIN[sensorEsquerdaIndex + 1] == BRANCO);
+  }
+  if (sensorDireitaIndex >= 0 && sensorDireitaIndex < QTSensores) {
+    sDir = (SensorBIN[sensorDireitaIndex] == BRANCO);
+    if (sensorDireitaIndex - 1 >= 0) sDir = sDir || (SensorBIN[sensorDireitaIndex - 1] == BRANCO);
+  }
+
+  bool sensorAtivoEsquerda = sEsq;
+  bool sensorAtivoDireita  = sDir;
+
+  // --- Só conta quadrados se não estiver em encruzilhada ---
   if (!isEncruzilhada) {
-    // Contagem para o sensor da esquerda
-    if (currentSensorEsquerda && !lastSensorEsquerda) {
-      // Verifica se passou o tempo de debounce
-      if (millis() - ultimaContagemEsquerda >= debounceInterval) {
-        contadorQuadradosEsquerda++;
-        if (contadorQuadradosEsquerda > 4) {
-          contadorQuadradosEsquerda = 4; // Limita a 4
-        }
-        ultimaContagemEsquerda = millis();
-        if (Antropofagico != 0) {
-          Serial.println("Quadrado detectado à esquerda: " + String(contadorQuadradosEsquerda));
-        }
-      }
+    // Contar somente na transição 0->1 (rising edge) e respeitar debounce
+    if (sensorAtivoEsquerda && !lastSensorEsquerda && (now - ultimaContagem[0] > debounceInterval)) {
+      contadorQuadradosEsquerda++;
+      ultimaContagem[0] = now;
     }
-
-    // Contagem para o sensor da direita
-    if (currentSensorDireita && !lastSensorDireita) {
-      // Verifica se passou o tempo de debounce
-      if (millis() - ultimaContagemDireita >= debounceInterval) {
-        contadorQuadradosDireita++;
-        if (contadorQuadradosDireita > 4) {
-          contadorQuadradosDireita = 4; // Limita a 4
-        }
-        ultimaContagemDireita = millis();
-        if (Antropofagico != 0) {
-          Serial.println("Quadrado detectado à direita: " + String(contadorQuadradosDireita));
-        }
-      }
+    if (sensorAtivoDireita && !lastSensorDireita && (now - ultimaContagem[1] > debounceInterval)) {
+      contadorQuadradosDireita++;
+      ultimaContagem[1] = now;
     }
   }
 
-  // Atualiza os estados anteriores
-  lastSensorEsquerda = currentSensorEsquerda;
-  lastSensorDireita = currentSensorDireita;
-}
+  // Limites
+  contadorQuadradosEsquerda = constrain(contadorQuadradosEsquerda, 0, maxQuadrados);
+  contadorQuadradosDireita  = constrain(contadorQuadradosDireita,  0, maxQuadrados);
 
+  // Atualiza estados anteriores (para detecção de borda)
+  lastSensorEsquerda = sensorAtivoEsquerda;
+  lastSensorDireita  = sensorAtivoDireita;
+
+  if (!MODO_PRODUCAO){
+    Serial.print("sE:"); Serial.print(sensorAtivoEsquerda);
+    Serial.print(" lastE:"); Serial.print(lastSensorEsquerda);
+    Serial.print(" sD:"); Serial.print(sensorAtivoDireita);
+    Serial.print(" lastD:"); Serial.print(lastSensorDireita);
+    Serial.print(" isEncruz:"); Serial.print(isEncruzilhada);
+    Serial.print(" QEsq:"); Serial.print(contadorQuadradosEsquerda);
+    Serial.print(" QDir:"); Serial.println(contadorQuadradosDireita);
+  }
+}
 
 void ImprimirSensores(int Antropofagico) {
   if (Antropofagico == 1) {
@@ -156,42 +169,47 @@ void ImprimirSensores(int Antropofagico) {
 
 void Discretiza() {
   for (int i = 0; i < QTSensores; i++) {
-    // Discretiza o valor com base no valor de corte
-    if (Sensor[i] > corte[i]) {
-      SensorBIN[i] = true; // Estado ALTO
-    } else {
-      SensorBIN[i] = false; // Estado BAIXO
-    }
+      // Discretiza o valor com base no valor de corte
+      
+      if (Sensor[i] > corte[i]) {
+          SensorBIN[i] = true; // Estado ALTO
+      } else {
+          SensorBIN[i] = false; // Estado BAIXO
+      }
+      if (i == 2){
+        if (Sensor[i] >= 33) {
+          SensorBIN[i] = true; // Estado ALTO
+          } else {
+              SensorBIN[i] = false; // Estado BAIXO
+          }
+      }
+      if (i == 5){
+        if (Sensor[i] >= 400) {
+          SensorBIN[i] = true; // Estado ALTO
+          } else {
+              SensorBIN[i] = false; // Estado BAIXO
+          }
+      }
   }
 }
 
 void CalculaErro() {
-  long soma = 0;
-  int ativos = 0;
-  bool ignoringEsquerda = (millis() - tempoIgnoreEsquerda < duracaoIgnore);
-  bool ignoringDireita = (millis() - tempoIgnoreDireita < duracaoIgnore);
-  for (int i = 0; i < QTSensores; i++) {
-    if (ignoringEsquerda && i < SENSOR_CENTRAL) continue;
-    if (ignoringDireita && i > SENSOR_CENTRAL) continue;
-    if (SensorBIN[i] == BRANCO) {  // Detecta a linha
-      soma += i * 1000;         // Peso proporcional à posição
-      ativos++;
+    long soma = 0;
+    int ativos = 0;
+
+    for (int i = 0; i < QTSensores; i++) {
+        if (SensorBIN[i] == BRANCO) {  // Detecta a linha
+            soma += i * 1000;         // Peso proporcional à posição
+            ativos++;
+        }
     }
-  }
-  if (ativos > 0) {
-    float posicaoMedia = (float)soma / ativos;
-    erro = ((SENSOR_CENTRAL * 1000) - posicaoMedia) / 1000.0;  // Inverte o sinal do erro para corrigir a direção de virada
-  } else {
-    erro = erroA; // Mantém o erro anterior se não encontrou linha
-  }
-    // Detecção de encruzilhada (considera todos os sensores para robustez)
-  int ativosTotal = 0;
-  for (int i = 0; i < QTSensores; i++) {
-      if (SensorBIN[i] == BRANCO) {
-        ativosTotal++;
+
+    if (ativos > 0) {
+        float posicaoMedia = (float)soma / ativos;  
+        erro = (posicaoMedia - (SENSOR_CENTRAL * 1000)) / 1000.0;
+    } else {
+        erro = erroA; // Mantém o erro anterior se não encontrou linha
     }
-  } 
-  isEncruzilhada = (ativosTotal >= limiarEncruzilhada);
 }
 void CalculaPID() {
   // --- Cálculo dos termos ---
@@ -295,14 +313,14 @@ void Seguir() {
     if (virarAgora) {
       // Decidir direção com base nos contadores de quadrados
       if (contadorQuadradosEsquerda >= contadorQuadradosDireita) {
-        if (!isTest){
+        if (MODO_PRODUCAO){
         virar90Esquerda(); // Mais quadrados à esquerda, virar à esquerda
           if (Antropofagico != 0) {
             Serial.println("Virando à esquerda!");
           }
         }
       } else {
-        if (!isTest){
+        if (MODO_PRODUCAO){
           virar90Direita(); // Mais quadrados à direita, virar à direita
           if (Antropofagico != 0) {
             Serial.println("Virando à direita!");
@@ -332,7 +350,7 @@ void Seguir() {
   // --- Limita velocidades ---
   VeloE = constrain(VeloE, 0, MAXR);
   VeloD = constrain(VeloD, 0, MAXR);
-  if (!isTest){
+  if (MODO_PRODUCAO){
     // --- Controle dos motores ---
     if (VeloE >= MAXR && VeloD <= 0) {
       // Curva fechada esquerda
@@ -471,6 +489,37 @@ float calcularMediana(int valores[], int tamanho) {
     return valores[tamanho / 2];
   }
 }
+bool DetectarQuadrado() {
+    int ativos = 0;
+    int meio = SENSOR_CENTRAL;
+    // checa sensores próximos do centro, por ex., +-3
+    for (int i = max(0, meio-3); i <= min(QTSensores-1, meio+3); i++) {
+        if (SensorBIN[i] == BRANCO) ativos++;
+    }
+    return (ativos >= 2 && ativos <= 4);
+}
+
+bool DetectarEncruzilhada() {
+  // Condição para detectar uma encruzilhada (exemplo de encruzilhada em "T" ou "X"):
+  // Se o sensor central (frente) e os sensores laterais (esquerda e direita) estão detectando a linha preta simultaneamente,
+  // assumimos que estamos em uma encruzilhada.
+  
+  if (SensorBIN[0] == BRANCO && SensorBIN[6] == BRANCO && SensorBIN[10] == BRANCO) {
+    // Detecção de uma encruzilhada completa (cruzamento em X ou em T)
+    return true;
+  }
+  // Encruzilhada em T 
+  else if (SensorBIN[0] == BRANCO && SensorBIN[1] == BRANCO && SensorBIN[2] == BRANCO ) {
+    // Detecta uma encruzilhada em "T" à esquerda
+    return true;
+  } 
+  else if (SensorBIN[10] == BRANCO && SensorBIN[9] == BRANCO && SensorBIN[8] == BRANCO ) {
+    // Detecta uma encruzilhada em "T" à direita
+    return true;
+  }
+  
+  return false; // Não encontrou encruzilhada
+}
 
 void setup() {
   // Sensores
@@ -483,23 +532,26 @@ void setup() {
   pinMode(dirMotorE, OUTPUT);
   pinMode(pwmMotorD, OUTPUT);
   pinMode(dirMotorD, OUTPUT);
-  if (Antropofagico != 0) {
+  if (!MODO_PRODUCAO) {
     Serial.begin(115200);
   }
   
   // Aguarda pressionar o botão de calibração
-  if (Antropofagico == 0) {
+  if (!MODO_PRODUCAO) {
     Serial.println("Calibrando sensores...!");
   }
   // Chama a função de calibração
   Calibracao();
   delay(800);
-  if (Antropofagico != 0) {
+  if (!MODO_PRODUCAO) {
     Serial.println("======= avua fi!======");
   }
 }
 
 void loop() {
+  isEncruzilhada = DetectarEncruzilhada();
   Leitura();
   Seguir(); // Estado padrão ele segue a linha
+    yield();
+
 }

@@ -8,7 +8,7 @@
 #define Delta 20
 #define DifTras 18
 //////////////////////////////////////// BOTOES ////////////////////////////////////////
-//#define BotCalibra A3
+#define pinoMultifuncao A0
 //#define BotStart A0
 //#define BUZZ A1
 //////////////////////////////////////// PID ////////////////////////////////////////
@@ -18,8 +18,8 @@
 #define SENSOR_CENTRAL (QTSensores / 2)
 #define MUX_SIG A0
 const int MUX_S[4] = {14,12,13,15}; // Pinos do mux {A,B,C,D}0,4,5,16
-#define BRANCO 0
-#define PRETO 1
+#define BRANCO 1
+#define PRETO 0
 #define NumLeituras 2
 #define NumLeiturasQuadrados 6
 //////////////////////////////////////// MOTOR ////////////////////////////////////////
