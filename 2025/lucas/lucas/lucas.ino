@@ -27,7 +27,7 @@ int Antropofagico = 1;
 void Leitura() {
   // O loop continua lendo os canais do MUX na ordem normal (0, 1, 2, ...)
   for (int i = 0; i < QTSensores; i++) {
-    // --- Configuração do MUX (não muda) ---
+    // --- Configuração do MUX (lógica original mantida) ---
     Mandar_Mux_Bin[0] = (i & 0x01); // LSB
     Mandar_Mux_Bin[1] = (i & 0x02) >> 1; // Bit 1
     Mandar_Mux_Bin[2] = (i & 0x04) >> 2; // Bit 2
@@ -37,31 +37,40 @@ void Leitura() {
       digitalWrite(MUX_S[j], Mandar_Mux_Bin[j]);
     }
 
-    // Lê o valor do sensor atual através do MUX (não muda)
-    int leituraAtual = analogRead(MUX_SIG);
+    // --- INÍCIO DA CORREÇÃO PARA ESTABILIZAR A LEITURA ---
 
-    // --- Armazenamento Invertido ---
+    // 1. Damos uma pequena pausa para o MUX estabilizar o novo canal.
+    delayMicroseconds(1000); // <-- CORREÇÃO
+
+    // 2. Fazemos a "leitura fantasma" para limpar a "água do copo" (tensão residual).
+    analogRead(MUX_SIG); // <-- CORREÇÃO
+
+    // 3. Pausa para o conversor analógico-digital (ADC) se ajustar.
+    delayMicroseconds(1000); // <-- CORREÇÃO
+    
+    // 4. Agora sim, fazemos a leitura real. O valor aqui será muito mais preciso.
+    int leituraAtual = analogRead(MUX_SIG); // <-- LEITURA REAL
+
+    // --- FIM DA CORREÇÃO ---
+
+
+    // --- Armazenamento Invertido (sua lógica original mantida) ---
     // Calcula o índice de destino invertido
-    int indiceInvertido = (QTSensores - 1) - i; // 
+    int indiceInvertido = (QTSensores - 1) - i; 
     // Atualiza o histórico de leituras na posição invertida
-    HistoricoLeituras[indiceInvertido][IndiceLeitura] = leituraAtual; // 
+    HistoricoLeituras[indiceInvertido][IndiceLeitura] = leituraAtual;
 
-    long soma = 0; // Usar 'long' para a soma evita estouro (overflow)
+    long soma = 0;
     for (int k = 0; k < NumLeituras; k++) {
-      soma += HistoricoLeituras[indiceInvertido][k]; // 
+      soma += HistoricoLeituras[indiceInvertido][k];
     }
     // Armazena a média no vetor Sensor na posição invertida
-    Sensor[indiceInvertido] = soma / NumLeituras; // 
+    Sensor[indiceInvertido] = soma / NumLeituras; 
   }
 
-  // O resto da função permanece igual
-  // Atualiza o índice de controle para o histórico de leituras (circular)
+  // O resto da sua função permanece igual
   IndiceLeitura = (IndiceLeitura + 1) % NumLeituras;
-
-  // Impressão de dados para depuração
   ImprimirSensores(Antropofagico);
-
-  // Funções auxiliares para processamento de dados
   Discretiza();
 }
 
@@ -74,6 +83,7 @@ void ImprimirSensores(int Antropofagico) {
             Serial.print("| "); // Adiciona vírgula entre os sensores
         }
     }
+   
   }
   else if (Antropofagico == 2){
     for (int i = 0; i < QTSensores; i++) {
@@ -81,14 +91,14 @@ void ImprimirSensores(int Antropofagico) {
       if (i < QTSensores - 1) {
           Serial.print("| "); // Adiciona vírgula entre os sensores
       }
-    }
+  9  }
   }
   if(Antropofagico != 0){
       Serial.print(" | VeloE: " + String(VeloE) + " | VeloD: " + String(VeloD) + "|");
   Serial.println(erro); // Imprime o valor do erro
     }
 
-
+ delay(1000);
 }
 
 void Discretiza() {
