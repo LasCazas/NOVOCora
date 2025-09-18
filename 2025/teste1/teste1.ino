@@ -353,25 +353,25 @@ void Seguir() {
   VeloD = constrain(VeloD, 0, MAXR);
   if (MODO_PRODUCAO){
     // --- Controle dos motores ---
-    if (VeloE >= MAXR && VeloD <= 0) {
-      // Curva fechada esquerda
-      digitalWrite(dirMotorE, LOW);   // Motor E frente
-      digitalWrite(dirMotorD, HIGH);  // Motor D trás
-      analogWrite(pwmMotorE, VeloE);
-      analogWrite(pwmMotorD, VeloD);
-    } else if (VeloD >= MAXR && VeloE <= 0) {
-      // Curva fechada direita
-      digitalWrite(dirMotorE, HIGH);  // Motor E trás
-      digitalWrite(dirMotorD, LOW);   // Motor D frente
-      analogWrite(pwmMotorE, VeloD);
-      analogWrite(pwmMotorD, VeloD);
-    } else {
-      // Movimento normal (ambos frente)
-      digitalWrite(dirMotorE, LOW);
-      digitalWrite(dirMotorD, LOW);
-      analogWrite(pwmMotorE, VeloE);
-      analogWrite(pwmMotorD, VeloD);
-    }
+      if (VeloE >= MAXR && VeloD <= 0) {
+        // Curva fechada esquerda
+        digitalWrite(dirMotorE, LOW);   // Motor E frente
+        digitalWrite(dirMotorD, HIGH);  // Motor D trás
+        analogWrite(pwmMotorE, VeloE);
+        analogWrite(pwmMotorD, VeloD);
+      } else if (VeloD >= MAXR && VeloE <= 0) {
+        // Curva fechada direita
+        digitalWrite(dirMotorE, HIGH);  // Motor E trás
+        digitalWrite(dirMotorD, LOW);   // Motor D frente
+        analogWrite(pwmMotorE, VeloD);
+        analogWrite(pwmMotorD, VeloD);
+      } else {
+        // Movimento normal (ambos frente)
+        digitalWrite(dirMotorE, LOW);
+        digitalWrite(dirMotorD, LOW);
+        analogWrite(pwmMotorE, VeloE);
+        analogWrite(pwmMotorD, VeloD);
+      }
   }
 }
 

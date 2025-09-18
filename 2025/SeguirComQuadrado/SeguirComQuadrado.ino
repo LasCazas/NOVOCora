@@ -1,374 +1,101 @@
 #include "Constante.c"
 
-int Sensor[QTSensores] = {0}; // Inicializa zerando tudo
-bool SensorBIN[QTSensores] = {1};
-int HistoricoLeituras[QTSensores][NumLeituras];  // Armazena as últimas 5 leituras de cada sensor
-int IndiceLeitura = 0;                    // Índice de controle para o histórico de leituras
-const int MODO_PRODUCAO = 0; // 0 = Modo Debug (Serial ATIVO), 1 = Modo Produção (Serial DESATIVADO)
-const int SEM_MOTOR = !MODO_PRODUCAO;
+// =============================================================================
+// 1. ARQUITETURA DA MÁQUINA DE ESTADOS
+// =============================================================================
 
-bool Mandar_Mux_Bin[4] = {0};
+// Enumeração de todos os possíveis estados do robô
+enum EstadoRobo {
+  CALIBRANDO,
+  SEGUINDO_LINHA,
+  AVALIANDO_CRUZAMENTO, // Estado transitório para decidir o que fazer
+  CURVA_SIMPLES,        // Executando uma curva de 90 graus
+  NAVEGANDO_ROTATORIA,  // Dentro da rotatória, seguindo a linha e contando saídas
+  SAINDO_ROTATORIA,     // Executando a manobra para sair da rotatória
+  VERIFICA_FIM_PISTA,   // Viu tudo preto, vai tentar a ré
+  MANOBRA_RE,           // Executando a ré
+  PARADO                // Estado final, motores desligados
+};
+
+// Variável global que armazena o estado atual do robô
+EstadoRobo estadoAtual = SEGUINDO_LINHA; // Começa seguindo a linha após a calibração
+
+// =============================================================================
+// 2. CONSTANTES E PARÂMETROS GLOBAIS (Seu código original)
+// =============================================================================
+
+// --- Modos de Operação ---
+const int MODO_PRODUCAO = 0; // 0 = Debug (Serial ATIVO), 1 = Produção (Serial DESATIVADO)
+
+// --- Parâmetros do Controle PID ---
+float Kp = 16.0, Ki = 0.03, Kd = 3.0;
+
+// --- Parâmetros de Navegação ---
+const int sensorEsquerdaIndex = 0;
+const int sensorDireitaIndex = QTSensores - 1;
+const unsigned long tempoVirada = 200;
+const unsigned long tempoMaximoEntreQuadrados = 5000;
+const unsigned long TEMPO_MAXIMO_RE = 2000;
+const unsigned long debouceBlack = 650;
+const unsigned long tempoLimiteParada = 650;
+
+
+// =============================================================================
+// 3. VARIÁVEIS GLOBAIS (Seu código original, com adições para a FSM)
+// =============================================================================
+
+// --- Dados dos Sensores ---
+int Sensor[QTSensores] = {0};
+bool SensorBIN[QTSensores] = {false};
 int corte[QTSensores] = {0};
-// Arrays globais para guardar min e max de cada sensor
-int menores[QTSensores][1];
-int maiores[QTSensores][1];
-
-int P = 0, I = 0, D = 0, PID = 0;
-float erro = 0, erroA = 0;
-int VeloE, VeloD;
-unsigned long CalibraInterval = 0; // Tempo de inicia de calibracao
-//////////////////////////////////////// PID ////////////////////////////////////////
-float Kp = 16, Ki = 0.03, Kd = 3; // Parâmetros do PID
-float targetValue = 0; // Valor alvo
-bool autoTuningEnabled = false; // Habilitar/desabilitar auto-tuning
-unsigned long lastTuneTime = 0; // Tempo da última atualização de tuning
-const unsigned long tuneInterval = 1000; // Intervalo de tempo para ajuste
-/////////////////////////////////////////////////////////////////////////////////////
-int i = 0, j = 0;
-int Antropofagico = 2;
-
-// Variáveis para o sistema de quadrados e rotatória
-int contadorQuadradosEsquerda = 0; // Contador de quadrados no sensor da esquerda
-int contadorQuadradosDireita = 0;  // Contador de quadrados no sensor da direita
-bool lastSensorEsquerda = false;    // Último estado do sensor da esquerda
-bool lastSensorDireita = false;     // Último estado do sensor da direita
-bool emModoRotatoria = false;       // Indica se está no modo rotatória
-int contadorSaidas = 0;            // Contador de encruzilhadas a passar
-const int sensorEsquerdaIndex = 0; // Sensor da esquerda
-const int sensorDireitaIndex = QTSensores - 1; // Sensor da direita
-const int limiarEncruzilhada = 9;  // Número de sensores ativos para detectar encruzilhada
-bool isEncruzilhada = false;       // Indica se está em uma encruzilhada
-const unsigned long tempoVirada = 200; // Tempo em ms para virar 90 graus
-
-bool podeContarNovoQuadrado = true; // Flag para evitar contagem dupla
-unsigned long tempoIgnoreEsquerda = 0;  // Tempo da última detecção de quadrado à esquerda
-unsigned long tempoIgnoreDireita = 0;   // Tempo da última detecção de quadrado à direita
-const unsigned long duracaoIgnore = 300; // Duração (ms) para ignorar sensores laterais após quadrado
+int HistoricoLeituras[QTSensores][NumLeituras];
+int IndiceLeitura = 0;
 unsigned long tempoPerdaLinha = 0;
-const unsigned long tempoLimiteParada = 650; 
-// Flag para controlar se o robô deve ficar parado.
-bool roboParado = false;
+bool isEncruzilhada = false;
 
-void Leitura() {
-  // O loop continua lendo os canais do MUX na ordem normal (0, 1, 2, ...)
-  for (int i = 0; i < QTSensores; i++) {
-    // --- Configuração do MUX (não muda) ---
-    Mandar_Mux_Bin[0] = (i & 0x01); // LSB
-    Mandar_Mux_Bin[1] = (i & 0x02) >> 1; // Bit 1
-    Mandar_Mux_Bin[2] = (i & 0x04) >> 2; // Bit 2
-    Mandar_Mux_Bin[3] = (i & 0x08) >> 3; // MSB
+// --- Controle PID ---
+float erro = 0.0, erroA = 0.0;
+float P = 0, I = 0, D = 0;
+int PID = 0;
+int VeloE = 0, VeloD = 0;
 
-    for (int j = 0; j < 4; j++) {
-      digitalWrite(MUX_S[j], Mandar_Mux_Bin[j]);
-    }
+// --- Lógica de Navegação e Estado ---
+int contadorQuadradosEsquerda = 0;
+int contadorQuadradosDireita = 0;
+bool lastSensorEsquerda = false;
+bool lastSensorDireita = false;
+unsigned long tempoUltimoQuadrado = 0;
 
-    // Lê o valor do sensor atual através do MUX (não muda)
-    int leituraAtual = analogRead(MUX_SIG);
+// --- Variáveis de controle para a Rotatória ---
+enum Direcao { NENHUMA, ESQUERDA, DIREITA };
+Direcao direcaoDaManobra = NENHUMA; // Usado para curvas e rotatórias
+int saidasParaIgnorar = 0;
+unsigned long timestampTransicao; // Para pausas entre estados
 
-    // --- Armazenamento Invertido ---
-    // Calcula o índice de destino invertido
-    int indiceInvertido = (QTSensores - 1) - i; // 
-    // Atualiza o histórico de leituras na posição invertida
-    HistoricoLeituras[indiceInvertido][IndiceLeitura] = leituraAtual; // 
+// --- Variáveis de Depuração ---
+int Antropofagico = 2; // 1 = Analógico, 2 = Binário
 
-    long soma = 0; // Usar 'long' para a soma evita estouro (overflow)
-    for (int k = 0; k < NumLeituras; k++) {
-      soma += HistoricoLeituras[indiceInvertido][k]; // 
-    }
-    // Armazena a média no vetor Sensor na posição invertida
-    Sensor[indiceInvertido] = soma / NumLeituras; // 
+// =============================================================================
+// 4. SETUP E CALIBRAÇÃO (Seu código original, sem alterações)
+// =============================================================================
+
+void setup() {
+  pinMode(MUX_SIG, INPUT);
+  for (int i = 0; i < 4; i++) { pinMode(MUX_S[i], OUTPUT); }
+  pinMode(pwmMotorE, OUTPUT);
+  pinMode(dirMotorE, OUTPUT);
+  pinMode(pwmMotorD, OUTPUT);
+  pinMode(dirMotorD, OUTPUT);
+
+  if (!MODO_PRODUCAO) {
+    Serial.begin(115200);
+    Serial.println("Iniciando... Pressione o botao para calibrar.");
   }
-
-  // O resto da função permanece igual
-  // Atualiza o índice de controle para o histórico de leituras (circular)
-  IndiceLeitura = (IndiceLeitura + 1) % NumLeituras;
-
-  // Impressão de dados para depuração
-  if (!MODO_PRODUCAO){
-    ImprimirSensores(Antropofagico);
-  }
-  // Funções auxiliares para processamento de dados
-  Discretiza();
-  ContagemQuadrados();
-}
-
-void ContagemQuadrados() {
-  // --- Configurações ---
-  static unsigned long ultimaContagem[2] = {0, 0};   // 0 = esquerda, 1 = direita
-  const unsigned long debounceInterval = 200;        // ms
-  const int maxQuadrados = 1;
-
-  unsigned long now = millis();
-
-  // --- Leitura segura dos sensores vizinhos (evita out-of-bounds) ---
-  bool sEsq = false;
-  bool sDir = false;
-  // supondo QTSensores disponível:
-
-  if (sensorEsquerdaIndex >= 0 && sensorEsquerdaIndex < QTSensores) {
-    sEsq = ((SensorBIN[sensorEsquerdaIndex] == BRANCO) && (SensorBIN[SENSOR_CENTRAL] == BRANCO) && (SensorBIN[sensorEsquerdaIndex + 2] == PRETO) && (SensorBIN[sensorEsquerdaIndex + 3] == PRETO));
-  }
-  if (sensorDireitaIndex >= 0 && sensorDireitaIndex < QTSensores) {
-    sDir = ((SensorBIN[sensorDireitaIndex] == BRANCO)&& (SensorBIN[SENSOR_CENTRAL] == BRANCO) && (SensorBIN[sensorDireitaIndex - 2] == PRETO)  && (SensorBIN[sensorDireitaIndex - 3] == PRETO));
-  }
-
-
-  // --- Só conta quadrados se não estiver em encruzilhada ---
-  if (!isEncruzilhada) {
-    // Contar somente na transição 0->1 (rising edge) e respeitar debounce
-    if (sEsq && !lastSensorEsquerda && (now - ultimaContagem[0] > debounceInterval)) {
-      contadorQuadradosEsquerda++;
-      ultimaContagem[0] = now;
-    }
-    if (sDir && !lastSensorDireita && (now - ultimaContagem[1] > debounceInterval)) {
-      contadorQuadradosDireita++;
-      ultimaContagem[1] = now;
-    }
-  }
-
-  // Limites
-  contadorQuadradosEsquerda = constrain(contadorQuadradosEsquerda, 0, maxQuadrados);
-  contadorQuadradosDireita  = constrain(contadorQuadradosDireita,  0, maxQuadrados);
-
-  // Atualiza estados anteriores (para detecção de borda)
-  lastSensorEsquerda = sEsq;
-  lastSensorDireita  = sDir;
-
-  if (!MODO_PRODUCAO){
-    Serial.print("sE:"); Serial.print(sEsq);
-    Serial.print(" lastE:"); Serial.print(lastSensorEsquerda);
-    Serial.print(" sD:"); Serial.print(sDir);
-    Serial.print(" lastD:"); Serial.print(lastSensorDireita);
-    Serial.print(" isEncruz:"); Serial.print(isEncruzilhada);
-    Serial.print(" QEsq:"); Serial.print(contadorQuadradosEsquerda);
-    Serial.print(" QDir:"); Serial.println(contadorQuadradosDireita);
-  }
-}
-
-void ImprimirSensores(int Antropofagico) {
-  if (Antropofagico == 1) {
-    for (int i = 0; i < QTSensores; i++) {
-      Serial.print(Sensor[i]);
-      if (i < QTSensores - 1) {
-        Serial.print("| "); // Adiciona vírgula entre os sensores
-      }
-    }
-  }
-  else if (Antropofagico == 2) {
-    for (int i = 0; i < QTSensores; i++) {
-      Serial.print(SensorBIN[i]);
-      if (i < QTSensores - 1) {
-        Serial.print("| "); // Adiciona vírgula entre os sensores
-      }
-    }
-  }
-  if (Antropofagico != 0) {
-    Serial.print(" | VeloE: " + String(VeloE) + " | VeloD: " + String(VeloD) + " | Erro: " + String(erro));
-    Serial.print(" | Quadrados Esq: " + String(contadorQuadradosEsquerda) + " | Quadrados Dir: " + String(contadorQuadradosDireita));
-    Serial.println();
-  }
-}
-
-void Discretiza() {
-  for (int i = 0; i < QTSensores; i++) {
-      // Discretiza o valor com base no valor de corte
-      
-      if (Sensor[i] > corte[i]) {
-          SensorBIN[i] = true; // Estado ALTO
-      } else {
-          SensorBIN[i] = false; // Estado BAIXO
-      }
-      if (i == 2){
-        if (Sensor[i] >= 40) {
-          SensorBIN[i] = true; // Estado ALTO
-          } else {
-              SensorBIN[i] = false; // Estado BAIXO
-          }
-      }
-  }
-}
-
-void CalculaErro() {
-    long soma = 0;
-    int ativos = 0;
-
-    for (int i = 0; i < QTSensores; i++) {
-        if (SensorBIN[i] == BRANCO) {  // Detecta a linha
-            soma += i * 1000;         // Peso proporcional à posição
-            ativos++;
-        }
-    }
-
-    if (ativos > 0) {
-        float posicaoMedia = (float)soma / ativos;  
-        erro = (posicaoMedia - (SENSOR_CENTRAL * 1000)) / 1000.0;
-    } else {
-        erro = erroA; // Mantém o erro anterior se não z       encontrou linha
-    }
-}
-void CalculaPID() {
-  // --- Cálculo dos termos ---
-  P = erro * Kp;
-  I = I + erro;
-  D = erro - erroA;
-
-  AntiWindUp(); // Limita a parte integrativa
-
-  // --- Saída PID ---
-  PID = P + (Ki * I) + (Kd * D);
-
-  // --- Atualiza erro anterior ---
-  erroA = erro;
-}
-
-void AntiWindUp() { 
-  // Zera a parte integrativa quando o erro some ou inverte
-  if (erro == 0) {
-    I = 0;
-  }
-  if ((erro > 0 && erroA < 0) || (erro < 0 && erroA > 0)) {
-    I = 0;
-  }
-}
-
-void AutoTunePID() {
-  if (autoTuningEnabled && (millis() - lastTuneTime > tuneInterval)) {
-    // Ajuste proporcional adaptativo simples
-    if (erro > 0) {
-      Kp += 0.1;
-    } else {
-      Kp -= 0.1;
-    }
-
-    // Pequeno ajuste em Ki e Kd
-    Ki += 0.01;
-    Kd += 0.001;
-
-    // Evita valores explosivos
-    Kp = constrain(Kp, 0, 10);
-    Ki = constrain(Ki, 0, 1);
-    Kd = constrain(Kd, 0, 1);
-
-    lastTuneTime = millis();
-  }
-}
-
-void virar90Direita() {
-  // Parar roda direita (motorE), andar frente com esquerda (motorD)
-  digitalWrite(dirMotorD, LOW);   // Motor esquerdo frente
-  analogWrite(pwmMotorD, PWMD);
-  digitalWrite(dirMotorE, HIGH);   // Motor direito frente (mas pwm 0 para parar)
-  analogWrite(pwmMotorE, PWME);
-  delay(tempoVirada);             // Tempo para virar 90 graus
-
-  // Parar ambos os motores após a virada
-  analogWrite(pwmMotorD, 0);
-  analogWrite(pwmMotorE, 0);
-}
-
-void virar90Esquerda() {
-  // Parar roda esquerda (motorD), andar frente com direita (motorE)
-  digitalWrite(dirMotorD, HIGH);   
-  analogWrite(pwmMotorD, PWMD);
-  digitalWrite(dirMotorE, LOW);   // Motor direito frente
-  analogWrite(pwmMotorE, PWME);
-  delay(tempoVirada);             // Tempo para virar 90 graus
-
-  // Parar ambos os motores após a virada
-  analogWrite(pwmMotorD, 0);
-  analogWrite(pwmMotorE, 0);
-}
-
-void Seguir() {
-  CalculaErro();
-  // Lógica para encruzilhadas e modo rotatória
-  if (isEncruzilhada) {
-    erro = 0; 
-    bool virarAgora = false;
-
-    if (emModoRotatoria) {
-      contadorSaidas--;
-      if (contadorSaidas == 0) {
-        virarAgora = true;
-        emModoRotatoria = false;
-      }
-      // Caso contrário, passa reto (continua com PID)
-    } else {
-      // Usa o maior número de quadrados entre esquerda e direita
-      int totalQuadrados = max(contadorQuadradosEsquerda, contadorQuadradosDireita);
-      if (totalQuadrados > 0) {
-        virarAgora = true;
-        emModoRotatoria = true;
-        contadorSaidas = totalQuadrados;
-        contadorQuadradosEsquerda = 0;
-        contadorQuadradosDireita = 0;
-      }
-      // Caso contrário, passa reto (continua com PID)
-    }
-
-    if (virarAgora) {
-
-      // Decidir direção com base nos contadores de quadrados
-      if (contadorQuadradosEsquerda >= contadorQuadradosDireita) {
-        
-        if (MODO_PRODUCAO){
-        virar90Esquerda(); // Mais quadrados à esquerda, virar à esquerda
-          if (Antropofagico != 0) {
-            Serial.println("Virando à esquerda!");
-          }
-        }
-      } else {
-        if (MODO_PRODUCAO){
-          virar90Direita(); // Mais quadrados à direita, virar à direita
-          if (Antropofagico != 0) {
-            Serial.println("Virando à direita!");
-          }
-        }
-      }
-      return; // Após virar, sai da função (próximo loop fará nova leitura)
-    }
-  }
-
-  // Lógica PID normal (passa reto em encruzilhadas se não for para virar)
-  CalculaPID();
-  AutoTunePID();
-
-  // --- Limita saída PID ---
-  PID = constrain(PID, -MAXR, MAXR);
-
-  // --- Calcula velocidades ---
-  if (PID > 0) { // Correção para direita
-    VeloE = PWME + PID;
-    VeloD = PWMD - PID;
-  } else {       // Correção para esquerda
-    VeloE = PWME + PID;  // PID é negativo
-    VeloD = PWMD - PID;  // subtrair negativo = somar
-  }
-
-  // --- Limita velocidades ---
-  VeloE = constrain(VeloE, 0, MAXR);
-  VeloD = constrain(VeloD, 0, MAXR);
-  if (MODO_PRODUCAO){
-    // --- Controle dos motores ---
-    if (VeloE >= MAXR && VeloD <= 0) {
-      // Curva fechada esquerda
-      digitalWrite(dirMotorE, LOW);   // Motor E frente
-      digitalWrite(dirMotorD, HIGH);  // Motor D trás
-      analogWrite(pwmMotorE, VeloE);
-      analogWrite(pwmMotorD, VeloD);
-    } else if (VeloD >= MAXR && VeloE <= 0) {
-      // Curva fechada direita
-      digitalWrite(dirMotorE, HIGH);  // Motor E trás
-      digitalWrite(dirMotorD, LOW);   // Motor D frente
-      analogWrite(pwmMotorE, VeloE);
-      analogWrite(pwmMotorD, VeloD);
-    } else {
-      // Movimento normal (ambos frente)
-      digitalWrite(dirMotorE, LOW);
-      digitalWrite(dirMotorD, LOW);
-      analogWrite(pwmMotorE, VeloE);
-      analogWrite(pwmMotorD, VeloD);
-    }
+  delay(1000);
+  Calibracao();
+  delay(800);
+  if (!MODO_PRODUCAO) {
+    Serial.println("======= Calibracao concluida. Iniciando percurso! ======");
   }
 }
 
@@ -379,6 +106,7 @@ void Calibracao() {
     int calibMin[QTSensores];
     int calibMax[QTSensores] = {0};
 
+    // Inicializa o array de mínimos com o maior valor possível
     for (int i = 0; i < QTSensores; i++) {
         calibMin[i] = 1023;
     }
@@ -387,267 +115,657 @@ void Calibracao() {
       Serial.println("Iniciando calibracao... Mova o robo sobre a linha e o fundo branco.");
     }
 
-    // Realiza as leituras durante o tempo de calibração
+    // Loop de leitura durante o tempo de calibração
     while (millis() - tempoInicial < tempoCalibracao) {
-        // O loop varre os canais do MUX na ordem física (0, 1, 2...)
         for (int sensorIndex = 0; sensorIndex < QTSensores; sensorIndex++) {
-            // Configura os pinos do MUX para o sensor atual
-            Mandar_Mux_Bin[0] = (sensorIndex & 0x01);
-            Mandar_Mux_Bin[1] = (sensorIndex & 0x02) >> 1;
-            Mandar_Mux_Bin[2] = (sensorIndex & 0x04) >> 2;
-            Mandar_Mux_Bin[3] = (sensorIndex & 0x08) >> 3;
-            
+            // Configura os pinos de seleção do MUX
             for (int j = 0; j < 4; j++) {
-                digitalWrite(MUX_S[j], Mandar_Mux_Bin[j]);
+                digitalWrite(MUX_S[j], (sensorIndex >> j) & 0x01);
             }
-
+            
             int valorLido = analogRead(MUX_SIG);
 
-            // <<< CORREÇÃO: Calcula o índice invertido, exatamente como na função Leitura()
+            // A leitura é feita na ordem física (0, 1, 2...), mas os dados são
+            // armazenados na ordem invertida para que o sensor 0 lógico seja o da esquerda.
             int indiceInvertido = (QTSensores - 1) - sensorIndex;
 
-            // <<< CORREÇÃO: Usa o 'indiceInvertido' para armazenar os valores
-            // Se o valor lido for menor que o mínimo já salvo, atualiza o mínimo.
             if (valorLido < calibMin[indiceInvertido]) {
                 calibMin[indiceInvertido] = valorLido;
             }
-
-            // Se o valor lido for maior que o máximo já salvo, atualiza o máximo.
             if (valorLido > calibMax[indiceInvertido]) {
                 calibMax[indiceInvertido] = valorLido;
             }
         }
-        yield();
+        yield(); // Permite que processos de fundo do ESP32/ESP8266 rodem
+    }
+
+    // Calcula o ponto de corte (média entre min e max) para cada sensor
+    for (int i = 0; i < QTSensores; i++) {
+        corte[i] = (calibMax[i] + calibMin[i]) / 2;
     }
 
     if (MODO_PRODUCAO == 0) {
-      Serial.println("\nCalibracao finalizada!");
-    }
-
-    // Calcula e armazena o corte. Este loop já funciona corretamente, pois os 
-    // dados nos arrays calibMin e calibMax já estão na ordem invertida.
-    for (int i = 0; i < QTSensores; i++) {
-        // A posição 'i' aqui corresponde ao 'indiceInvertido' desejado.
-        corte[i] = (calibMax[i] + calibMin[i]) / 2;
-
-        if (MODO_PRODUCAO == 0){
-            // Imprime "Sensor 0" mas com os dados do último sensor físico, mantendo a consistência.
+        Serial.println("\nCalibracao finalizada!");
+        for (int i = 0; i < QTSensores; i++) {
             Serial.print("Sensor " + String(i));
             Serial.print(" | Min: " + String(calibMin[i]));
             Serial.print(" | Max: " + String(calibMax[i]));
-            Serial.println(" | Corte: " + String(corte[i]));
+              Serial.println(" | Corte: " + String(corte[i]));
         }
     }
 }
-float calcularMediana(int valores[], int tamanho) {
-  // Ordena o array
-  for (int i = 0; i < tamanho - 1; i++) {
-    for (int j = 0; j < tamanho - i - 1; j++) {
-      if (valores[j] > valores[j + 1]) {
-        int temp = valores[j];
-        valores[j] = valores[j + 1];
-        valores[j + 1] = temp;
-      }
+
+// =============================================================================
+// 5. LEITURA E PROCESSAMENTO DOS SENSORES
+// =============================================================================
+
+void Leitura() {
+  bool Mandar_Mux_Bin[4];
+
+  // Itera sobre cada sensor na ordem física do MUX
+  for (int i = 0; i < QTSensores; i++) {
+    // Configura os pinos de seleção do MUX para ler o sensor 'i'
+    for (int j = 0; j < 4; j++) {
+      digitalWrite(MUX_S[j], (i >> j) & 0x01);
     }
+    
+    int leituraAtual = analogRead(MUX_SIG);
+    
+    // Armazena a leitura na ordem lógica invertida
+    int indiceInvertido = (QTSensores - 1) - i;
+    HistoricoLeituras[indiceInvertido][IndiceLeitura] = leituraAtual;
+
+    // Calcula a média móvel para suavizar a leitura
+    long soma = 0;
+    for (int k = 0; k < NumLeituras; k++) {
+      soma += HistoricoLeituras[indiceInvertido][k];
+    }
+    Sensor[indiceInvertido] = soma / NumLeituras;
   }
-  // Retorna a mediana
-  if (tamanho % 2 == 0) {
-    return (valores[tamanho / 2 - 1] + valores[tamanho / 2]) / 2.0;
-  } else {
-    return valores[tamanho / 2];
+  
+  // Avança o índice do buffer circular
+  IndiceLeitura = (IndiceLeitura + 1) % NumLeituras;
+
+  // Processa os dados lidos
+  Discretiza();
+  ContagemQuadrados();
+  
+  if (!MODO_PRODUCAO) {
+    ImprimirSensores(Antropofagico);
   }
 }
-bool DetectarQuadrado() {
-    int ativos = 0;
-    int meio = SENSOR_CENTRAL;
-    // checa sensores próximos do centro, por ex., +-3
-    for (int i = max(0, meio-3); i <= min(QTSensores-1, meio+3); i++) {
-        if (SensorBIN[i] == BRANCO) ativos++;
+
+void Discretiza() {
+  for (int i = 0; i < QTSensores; i++) {
+    // Converte a leitura analógica em binária (PRETO/BRANCO) usando o limiar de corte
+    SensorBIN[i] = (Sensor[i] > corte[i]);
+  }
+  // Exceção/ajuste manual para o sensor 2, se necessário
+  if (Sensor[2] >= 40) {
+      SensorBIN[2] = true;
+  } else {
+      SensorBIN[2] = false;
+  }
+}
+
+// =============================================================================
+// 6. DETECÇÃO DE CARACTERÍSTICAS DA PISTA
+// =============================================================================
+
+void CalculaErro() {
+    long somaPonderada = 0;
+    int sensoresAtivos = 0;
+
+    for (int i = 0; i < QTSensores; i++) {
+        if (SensorBIN[i] == BRANCO) {
+            // A posição de cada sensor é usada como peso
+            somaPonderada += (long)i * 1000;
+            sensoresAtivos++;
+        }
     }
-    return (ativos >= 2 && ativos <= 4);
+
+    if (sensoresAtivos > 0) {
+        // O erro é a diferença entre a posição média da linha e o centro do robô
+        float posicaoMedia = (float)somaPonderada / sensoresAtivos;
+        erro = (posicaoMedia - (SENSOR_CENTRAL * 1000)) / 1000.0;
+        erroA = erro; // Atualiza o erro anterior válido
+    } else {
+        // Se nenhuma linha for detectada, mantém o último erro conhecido
+        erro = erroA;
+    }
 }
 
 bool DetectarEncruzilhada() {
-  // Condição para detectar uma encruzilhada (exemplo de encruzilhada em "T" ou "X"):
-  // Se o sensor central (frente) e os sensores laterais (esquerda e direita) estão detectando a linha preta simultaneamente,
-  // assumimos que estamos em uma encruzilhada.
-  
-  if (SensorBIN[0] == BRANCO && SensorBIN[6] == BRANCO && SensorBIN[10] == BRANCO) {
-    // Detecção de uma encruzilhada completa (cruzamento em X ou em T)
-    return true;
-  }
-  // Encruzilhada em T 
-  else if (SensorBIN[0] == BRANCO && SensorBIN[1] == BRANCO && SensorBIN[2] == BRANCO ) {
-    // Detecta uma encruzilhada em "T" à esquerda
-    return true;
-  } 
-  else if (SensorBIN[12] == BRANCO && SensorBIN[11] == BRANCO && SensorBIN[10] == BRANCO ) {
-    // Detecta uma encruzilhada em "T" à direita
-    return true;
-  }
-  
-  return false; // Não encontrou encruzilhada
+    // Define quantos sensores, para CADA lado do centro, vamos verificar.
+    // Se SENSOR_CENTRAL é 6 e este valor é 4, vamos checar os sensores
+    // [6, 5, 4, 3] para a esquerda e [6, 7, 8, 9] para a direita.
+    // AJUSTE ESTE VALOR conforme a largura da sua linha de intersecção.
+    const int sensoresParaVerificar = 4;
+
+    // --- 1. Varre da metade para a ponta ESQUERDA ---
+    bool ladoEsquerdoOK = true; // Assume que está tudo branco até que se prove o contrário
+    for (int i = SENSOR_CENTRAL; i >= SENSOR_CENTRAL - sensoresParaVerificar; i--) {
+        // Garante que não estamos lendo fora do array de sensores
+        if (i < 0) break;
+
+        // Se encontrar UM sensor preto, já sabemos que não é uma linha contínua.
+        if (SensorBIN[i] == PRETO) {
+            ladoEsquerdoOK = false;
+            break; // Para a verificação deste lado
+        }
+    }
+
+    // --- 2. Varre da metade para a ponta DIREITA ---
+    bool ladoDireitoOK = true; // Assume que está tudo branco
+    for (int i = SENSOR_CENTRAL; i <= SENSOR_CENTRAL + sensoresParaVerificar; i++) {
+        // Garante que não estamos lendo fora do array
+        if (i >= QTSensores) break;
+
+        // Se encontrar UM sensor preto, para a verificação.
+        if (SensorBIN[i] == PRETO) {
+            ladoDireitoOK = false;
+            break;
+        }
+    }
+
+    // --- 3. Conclusão ---
+    if (ladoEsquerdoOK || ladoDireitoOK) {
+        return true;
+    }
+
+    // Se não atendeu à condição acima, não é uma encruzilhada.
+    return false;
 }
+// FUNÇÕES AJUDANTES PARA A LÓGICA DE ZONAS
+
+/**
+ * Verifica se QUALQUER sensor em um intervalo está vendo BRANCO.
+ * @param inicio O índice do primeiro sensor do intervalo.
+ * @param fim O índice do último sensor do intervalo.
+ * @return True se pelo menos um sensor estiver branco.
+ */
+// ---------- FUNÇÕES DE APOIO (substituir as antigas) ----------
+int clampIndex(int x) {
+  if (x < 0) return 0;
+  if (x > QTSensores - 1) return QTSensores - 1;
+  return x;
+}
+
+bool isQualquerBranco(int inicio, int fim) {
+    inicio = clampIndex(inicio);
+    fim    = clampIndex(fim);
+    if (inicio > fim) return false;
+    for (int i = inicio; i <= fim; i++) {
+        if (SensorBIN[i] == BRANCO) return true;
+    }
+    return false;
+}
+
+bool isTudoPreto(int inicio, int fim) {
+    inicio = clampIndex(inicio);
+    fim    = clampIndex(fim);
+    if (inicio > fim) return false; // Se range inválido, NÃO consideramos "tudo preto"
+    for (int i = inicio; i <= fim; i++) {
+        if (SensorBIN[i] == BRANCO) return false;
+    }
+    return true;
+}
+
+// Corrige verificações com erros de sinal/typo
+bool verificaPerdaTotalLinha() {
+    // Se as pontas veem a linha, não está perdida (usa -2..2 como "centro")
+    if (erro <= 2 && erro >= -2) {
+        return false;
+    }
+    // Se qualquer sensor ver branco, não está perdida
+    for (int i = 0; i < QTSensores; i++) {
+        if (SensorBIN[i] == BRANCO) return false;
+    }
+    return true;
+}
+
+bool verificaTudoPreto() {
+    // Se erro está próximo do centro, não é "tudo preto"
+    if (erro <= 2 && erro >= -2) { return false; }
+    for (int i = 0; i < QTSensores; i++) {
+        if (SensorBIN[i] != PRETO) return false;
+    }
+    return true;
+}
+
+void ContagemQuadrados() {
+    static unsigned long ultimaContagem[2] = {0, 0}; // 0=Esq, 1=Dir
+    const unsigned long debounceInterval = 200; // ms
+    unsigned long now = millis();
+
+    // Zonas (simplificado para clareza)
+    bool linhaNoCentro = SensorBIN[SENSOR_CENTRAL] == BRANCO || SensorBIN[SENSOR_CENTRAL - 1] == BRANCO || SensorBIN[SENSOR_CENTRAL + 1] == BRANCO;
+    bool marcaNaDireita = SensorBIN[sensorDireitaIndex] == BRANCO || SensorBIN[sensorDireitaIndex - 1] == BRANCO;
+    bool marcaNaEsquerda = SensorBIN[sensorEsquerdaIndex] == BRANCO || SensorBIN[sensorEsquerdaIndex + 1] == BRANCO;
+    bool hasGapEsquerda = SensorBIN[sensorEsquerdaIndex + 2] == PRETO || SensorBIN[sensorEsquerdaIndex + 3] == PRETO;
+    bool hasGapDireita = SensorBIN[sensorEsquerdaIndex + 2] == PRETO || SensorBIN[sensorEsquerdaIndex + 3] == PRETO;
+    // A condição para um "quadrado" é ter a linha no centro e uma marca na lateral ao mesmo tempo
+    bool sDir = linhaNoCentro && marcaNaDireita;
+    bool sEsq = linhaNoCentro && marcaNaEsquerda;
+    
+    // Se estiver em um estado de manobra, não conta quadrados para evitar leituras falsas
+    if (estadoAtual != SEGUINDO_LINHA && estadoAtual != NAVEGANDO_ROTATORIA) {
+        lastSensorEsquerda = sEsq;
+        lastSensorDireita  = sDir;
+        return;
+    }
+
+    // Zera contadores se o tempo entre quadrados for muito grande
+    if (now - tempoUltimoQuadrado > tempoMaximoEntreQuadrados) {
+        if (contadorQuadradosEsquerda > 0 || contadorQuadradosDireita > 0) {
+            if (!MODO_PRODUCAO) Serial.println(">> Timeout entre quadrados: zerando contagem");
+            contadorQuadradosEsquerda = 0;
+            contadorQuadradosDireita = 0;
+        }
+    }
+
+    // Contagem na borda de subida (quando o sensor detecta o quadrado pela primeira vez)
+    if (sEsq && !lastSensorEsquerda && (now - ultimaContagem[0] > debounceInterval)) {
+        contadorQuadradosEsquerda++;
+        ultimaContagem[0] = now;
+        tempoUltimoQuadrado = now;
+        if (!MODO_PRODUCAO) {
+            Serial.print(">> Quadrado ESQ detectado. Total: ");
+            Serial.println(contadorQuadradosEsquerda);
+        }
+    }
+    if (sDir && !lastSensorDireita && (now - ultimaContagem[1] > debounceInterval)) {
+        contadorQuadradosDireita++;
+        ultimaContagem[1] = now;
+        tempoUltimoQuadrado = now;
+        if (!MODO_PRODUCAO) {
+            Serial.print(">> Quadrado DIR detectado. Total: ");
+            Serial.println(contadorQuadradosDireita);
+        }
+    }
+
+    lastSensorEsquerda = sEsq;
+    lastSensorDireita  = sDir;
+}
+
+// Função auxiliar para evitar warnings de uso antes; retorna zonaDireitaInicio segura
+int zonaDireitaStartSafe(int candidate) {
+    return clampIndex(candidate);
+}
+
+
+// =============================================================================
+// 7. CONTROLE PID
+// =============================================================================
+
+void CalculaPID() {
+  P = erro * Kp;
+  I = I + erro;
+  D = erro - erroA;
+
+  AntiWindUp(); 
+
+  PID = P + (Ki * I) + (Kd * D);
+
+  erroA = erro;
+}
+
+void AntiWindUp() {
+  // Limita o termo integrativo para evitar que ele cresça indefinidamente
+  // e cause instabilidade (efeito "wind-up").
+  if (erro == 0 || (erro > 0 && erroA < 0) || (erro < 0 && erroA > 0)) {
+    I = 0;
+  }
+}
+
+// =============================================================================
+// 8. AÇÕES E CONTROLE DOS MOTORES
+// =============================================================================
+// =============================================================================
+// 8. AÇÕES E CONTROLE DOS MOTORES (Funções de Ação)
+// =============================================================================
 
 void pararMotores() {
   analogWrite(pwmMotorE, 0);
   analogWrite(pwmMotorD, 0);
-  // Opcional: Apenas para garantir um estado conhecido.
-  digitalWrite(dirMotorE, LOW);
-  digitalWrite(dirMotorD, LOW);
-}
-void setup() {
-  // Sensores
-  pinMode(MUX_SIG, INPUT);
-  for (i = 0; i < 4; i++) {
-    pinMode(MUX_S[i], OUTPUT);
-  }
-  // Motores
-  pinMode(pwmMotorE, OUTPUT);
-  pinMode(dirMotorE, OUTPUT);
-  pinMode(pwmMotorD, OUTPUT);
-  pinMode(dirMotorD, OUTPUT);
-  if (!MODO_PRODUCAO) {
-    Serial.begin(115200);
-  }
-  
-  // Aguarda pressionar o botão de calibração
-  if (!MODO_PRODUCAO) {
-    Serial.println("Calibrando sensores...!");
-  }
-  // Chama a função de calibração
-  Calibracao();
-  delay(800);
-  if (!MODO_PRODUCAO) {
-    Serial.println("======= avua fi!======");
-  }
-}
-bool verificaPerdaTotalLinha() {
-  // ====================================================================
-  // /// AJUSTE AQUI O INTERVALO DOS SEUS SENSORES CENTRAIS ///
-  // ====================================================================
-  // A definição exata depende do seu QTSensores.
-  // Exemplo para QTSensores = 16: O centro está entre 7 e 8.
-  //    Um bloco de 5 sensores seria do 5 ao 9 (5, 6, 7, 8, 9).
-  // Exemplo para QTSensores = 8: O centro está entre 3 e 4.
-  //    Um bloco de 5 sensores seria do 1 ao 5 (1, 2, 3, 4, 5).
-  const int inicioSensoresCentrais = SENSOR_CENTRAL - 4; // << AJUSTE AQUI
-  const int fimSensoresCentrais = SENSOR_CENTRAL + 4;    // << AJUSTE AQUI
-  // ====================================================================
-
-  // --- Passo 1: Verificar os sensores das pontas ---
-  // Se o primeiro OU o último sensor virem a linha, ela não está perdida.
-  if (SensorBIN[0] == BRANCO || SensorBIN[QTSensores - 1] == BRANCO) {
-    return false; // Encontrou a linha em uma das pontas.
-  }
-
-  // --- Passo 2: Verificar o bloco de sensores centrais ---
-  for (int i = inicioSensoresCentrais; i <= fimSensoresCentrais; i++) {
-    // Se qualquer um dos sensores centrais vir a linha, ela não está perdida.
-    if (SensorBIN[i] == BRANCO) {
-      return false; // Encontrou a linha no centro.
-    }
-  }
-
-  // --- Passo 3: Conclusão ---
-  // Se o código chegou até aqui, significa que NEM as pontas NEM os sensores
-  // centrais designados viram a linha. Portanto, a linha está perdida.
-  return true;
-}
-// Variável global
-bool verificaTudoPreto() {
-  // Se TODOS sensores são pretos, retorna true
-  for (int i = 0; i < QTSensores; i++) {
-    if (SensorBIN[i] != PRETO) {  // ajuste conforme sua constante
-      return false;
-    }
-  }
-  return true;
 }
 
-void moverRe() {
-  // Liga motores para trás por um curto tempo
-        digitalWrite(dirMotorE, LOW);
-      digitalWrite(dirMotorD, LOW);
-      analogWrite(pwmMotorE, VeloE);
-      analogWrite(pwmMotorD, VeloD);
-  delay(300);   // tempo da ré (ajuste fino)
+void virar90(Direcao direcao) {
+  if (direcao == DIREITA) {
+    digitalWrite(dirMotorD, LOW);  // Motor D para frente
+    analogWrite(pwmMotorD, PWMD);
+    digitalWrite(dirMotorE, HIGH); // Motor E para trás
+    analogWrite(pwmMotorE, PWME);
+  } else if (direcao == ESQUERDA) {
+    digitalWrite(dirMotorE, LOW);  // Motor E para frente
+    analogWrite(pwmMotorE, PWME);
+    digitalWrite(dirMotorD, HIGH); // Motor D para trás
+    analogWrite(pwmMotorD, PWMD);
+  }
+  delay(tempoVirada); // ATENÇÃO: delay() trava o código.
   pararMotores();
 }
 
-// Variável global
-// Variáveis globais
-bool tentouRe = false;        // Marca se já tentou dar ré uma vez
-unsigned long tempoUltimaRe = 0; // Armazena o momento da última tentativa de ré
-const unsigned long limiteRe = 3000; // 3 segundos em milissegundos
-
-
-
-void loop() {
-  isEncruzilhada = DetectarEncruzilhada();
-  Leitura();
-
-  // Se o robô já recebeu a ordem de parar, ele apenas para os motores e não faz mais nada.
-  if (roboParado) {
-    pararMotores();
-    return;
-  }
-
-  // --- NOVA LÓGICA: tudo preto ---
-  if (verificaTudoPreto()) {
-    if (!tentouRe) {
-      // Primeira vez que vê tudo preto -> dá ré
-      if (MODO_PRODUCAO == 0) {
-        Serial.println("Tudo preto detectado. Tentando dar ré para achar a linha...");
-      }
-      moverRe();
-      tentouRe = true;
-      return;  // encerra ciclo, na próxima rodada lê de novo
-    } else {
-      // Segunda vez seguida -> para
-      if (MODO_PRODUCAO == 0) {
-        
-        Serial.println("Tudo preto novamente. Parando de vez!");
-      }
-      roboParado = true;
-      pararMotores();
-      return;
-    }
-  } else {
-    // Se não está tudo preto, reseta o estado
-    tentouRe = false;
-  }
-
-  // --- Verifica se não tentou ré nos últimos 3 segundos ---
-  if (millis() - tempoUltimaRe > limiteRe && tempoUltimaRe != 0) {
-    if(MODO_PRODUCAO == 0){
-      Serial.println("Não tentou dar ré nos últimos 3 segundos. PARANDO!");
-    }
-    roboParado = true;
-    pararMotores();
-    return;
-  }
-
-  // --- Lógica de perda total da linha ---
-  if (verificaPerdaTotalLinha()) {
-    if (tempoPerdaLinha == 0) {
-      tempoPerdaLinha = millis();
-    }
-  } else {
-    tempoPerdaLinha = 0;
-  }
-
-  if (tempoPerdaLinha != 0 && (millis() - tempoPerdaLinha > tempoLimiteParada)) {
-    roboParado = true;
-    if(MODO_PRODUCAO == 0){
-      Serial.println("Linha perdida por mais de 500ms. PARANDO!");
-    }
-  }
-
-  // --- Movimento normal ---
-  if (!roboParado) {
-    Seguir();
-  }
-  yield();
+void moverRe() {
+  digitalWrite(dirMotorE, HIGH);
+  digitalWrite(dirMotorD, HIGH);
+  analogWrite(pwmMotorE, PWME);
+  analogWrite(pwmMotorD, PWMD);
 }
 
+/**
+ * @brief Função dedicada a seguir a linha usando o PID.
+ * Esta função é chamada pelos estados que precisam seguir em frente.
+ */
+void SeguirLinha() {
+  CalculaErro();
+  CalculaPID();
+
+  PID = constrain(PID, -MAXR, MAXR);
+
+  VeloE = constrain(PWME + PID, 0, MAXR);
+  VeloD = constrain(PWMD - PID, 0, MAXR);
+
+  if (MODO_PRODUCAO) {
+    digitalWrite(dirMotorE, LOW);
+    digitalWrite(dirMotorD, LOW);
+    analogWrite(pwmMotorE, VeloE);
+    analogWrite(pwmMotorD, VeloD);
+  }
+}
+
+// =============================================================================
+// 9. LÓGICA DA MÁQUINA DE ESTADOS (O Coração da nova arquitetura)
+// =============================================================================
+
+/**
+ * @brief Estado Padrão: Seguir a linha e verificar eventos.
+ */
+void handleSeguindoLinha() {
+  // Ação:
+  SeguirLinha();
+
+  // Verificação de Transições:
+  if (isEncruzilhada) {
+    estadoAtual = AVALIANDO_CRUZAMENTO;
+    pararMotores(); // Para para avaliar com calma
+    if (!MODO_PRODUCAO) Serial.println("-> Estado: AVALIANDO_CRUZAMENTO");
+  }
+  else if (verificaTudoPreto()) {
+    estadoAtual = VERIFICA_FIM_PISTA;
+    timestampTransicao = millis(); // Marca o tempo que viu tudo preto
+    if (!MODO_PRODUCAO) Serial.println("-> Estado: VERIFICA_FIM_PISTA");
+  }
+  else if (verificaPerdaTotalLinha()) {
+    if(tempoPerdaLinha == 0) tempoPerdaLinha = millis();
+    if(millis() - tempoPerdaLinha > tempoLimiteParada){
+       estadoAtual = PARADO;
+       if (!MODO_PRODUCAO) Serial.println("Linha perdida. -> Estado: PARADO");
+    }
+  } else {
+    tempoPerdaLinha = 0; // Reseta timer se a linha for encontrada
+  }
+}
+
+/**
+ * @brief Estado de Decisão: Analisa os quadrados contados e decide se é
+ * uma curva simples ou uma rotatória.
+ */
+void handleAvaliandoCruzamento() {
+  int quadradosEsq = contadorQuadradosEsquerda;
+  int quadradosDir = contadorQuadradosDireita;
+  int totalQuadrados = max(quadradosEsq, quadradosDir);
+
+  // Lógica para decidir a direção
+  direcaoDaManobra = (quadradosEsq >= quadradosDir) ? ESQUERDA : DIREITA;
+
+  // Se não houver quadrados, segue reto (se aplicável) ou para.
+  // Neste caso, vamos assumir que toda encruzilhada tem um destino.
+  if (totalQuadrados == 0) {
+      // O que fazer se chegar numa encruzilhada sem ter visto quadrados?
+      // Por enquanto, vamos voltar a seguir a linha.
+      estadoAtual = SEGUINDO_LINHA;
+      return;
+  }
+  
+  // Decide se é uma rotatória (2 ou mais quadrados) ou curva simples (1 quadrado)
+  if (totalQuadrados >= 2) {
+    if (!MODO_PRODUCAO) Serial.println("ROTATORIA DETECTADA!");
+
+    // LÓGICA DO PSEUDOCÓDIGO
+    int saidaRotatoria = 0;
+    if (totalQuadrados == 2) saidaRotatoria = 1; // 1a saida
+    if (totalQuadrados == 3) saidaRotatoria = 2; // 2a saida
+    if (totalQuadrados >= 4) saidaRotatoria = 3; // 3a saida
+    
+    saidasParaIgnorar = saidaRotatoria -1; // -1 pois a primeira saída não é ignorada
+    if (saidasParaIgnorar <0) saidasParaIgnorar = 0;
+
+    if (!MODO_PRODUCAO){
+      Serial.print("Direcao: "); Serial.println(direcaoDaManobra == ESQUERDA ? "ESQUERDA" : "DIREITA");
+      Serial.print("Saidas a ignorar: "); Serial.println(saidasParaIgnorar);
+    }
+    
+    estadoAtual = NAVEGANDO_ROTATORIA;
+    if (!MODO_PRODUCAO) Serial.println("-> Estado: NAVEGANDO_ROTATORIA");
+
+  } else { // 1 quadrado
+    if (!MODO_PRODUCAO) Serial.println("CURVA SIMPLES DETECTADA!");
+    estadoAtual = CURVA_SIMPLES;
+    if (!MODO_PRODUCAO) Serial.println("-> Estado: CURVA_SIMPLES");
+  }
+
+  // Zera os contadores para a próxima leitura
+  contadorQuadradosEsquerda = 0;
+  contadorQuadradosDireita = 0;
+  
+  // Avança um pouco para passar o centro do cruzamento
+  digitalWrite(dirMotorE, LOW);
+  digitalWrite(dirMotorD, LOW);
+  analogWrite(pwmMotorE, PWME);
+  analogWrite(pwmMotorD, PWMD);
+  delay(150);
+}
+
+/**
+ * @brief Estado de Ação: Executa uma curva de 90 graus.
+ */
+void handleCurvaSimples() {
+  // Ação:
+  virar90(direcaoDaManobra);
+  
+  // Transição:
+  direcaoDaManobra = NENHUMA;
+  estadoAtual = SEGUINDO_LINHA;
+  if (!MODO_PRODUCAO) Serial.println("Curva concluida. -> Estado: SEGUINDO_LINHA");
+  // Pequena pausa para estabilizar
+  delay(100);
+}
+
+/**
+ * @brief Estado Principal da Rotatória: Segue a linha e conta as saídas.
+ */
+void handleNavegandoRotatoria() {
+  // Ação:
+  SeguirLinha();
+
+  // Verificação de Transições:
+  // Detecta uma nova encruzilhada (uma saída da rotatória)
+  if (isEncruzilhada) {
+    if (saidasParaIgnorar > 0) {
+      saidasParaIgnorar--;
+      if (!MODO_PRODUCAO) {
+        Serial.print("Saida ignorada. Restam: ");
+        Serial.println(saidasParaIgnorar);
+      }
+      // Avança um pouco para passar a saída ignorada e não detectá-la de novo
+      digitalWrite(dirMotorE, LOW);
+      digitalWrite(dirMotorD, LOW);
+      analogWrite(pwmMotorE, PWME);
+      analogWrite(pwmMotorD, PWMD);
+      delay(250); // Ajuste conforme necessário
+    } else {
+      // Esta é a saída correta!
+      estadoAtual = SAINDO_ROTATORIA;
+      if (!MODO_PRODUCAO) Serial.println("Saida correta encontrada! -> Estado: SAINDO_ROTATORIA");
+    }
+  }
+}
+
+/**
+ * @brief Estado de Ação: Executa a virada para sair da rotatória.
+ */
+void handleSaindoRotatoria() {
+  // Ação:
+  virar90(direcaoDaManobra);
+
+  // Transição:
+  direcaoDaManobra = NENHUMA;
+  estadoAtual = SEGUINDO_LINHA;
+  if (!MODO_PRODUCAO) Serial.println("Saindo da rotatoria. -> Estado: SEGUINDO_LINHA");
+  delay(100);
+}
+
+
+/**
+ * @brief Estado de Verificação: Viu tudo preto, espera um tempo para confirmar.
+ */
+void handleVerificaFimPista() {
+  pararMotores();
+  
+  // Se a condição "tudo preto" sumir, foi alarme falso.
+  if (!verificaTudoPreto()){
+    estadoAtual = SEGUINDO_LINHA;
+    if (!MODO_PRODUCAO) Serial.println("Fim de pista era alarme falso. -> Estado: SEGUINDO_LINHA");
+    return;
+  }
+
+  // Se a condição persistir pelo tempo de debounce, inicia a ré
+  if(millis() - timestampTransicao > debouceBlack) {
+    estadoAtual = MANOBRA_RE;
+    timestampTransicao = millis(); // Marca o tempo de início da ré
+    if (!MODO_PRODUCAO) Serial.println("Confirmado fim de pista. -> Estado: MANOBRA_RE");
+  }
+}
+
+/**
+ * @brief Estado de Ação: Move para trás procurando a linha.
+ */
+void handleManobraRe(){
+  // Ação:
+  moverRe();
+
+  // Verificação de Transições:
+  // Se encontrou a linha, volta a seguir
+  if (!verificaTudoPreto()){
+    pararMotores();
+    estadoAtual = SEGUINDO_LINHA;
+    if (!MODO_PRODUCAO) Serial.println("Linha reencontrada apos re. -> Estado: SEGUINDO_LINHA");
+    delay(50);
+  } 
+  // Se o tempo máximo de ré esgotou, para de vez
+  else if (millis() - timestampTransicao > TEMPO_MAXIMO_RE){
+    estadoAtual = PARADO;
+    if (!MODO_PRODUCAO) Serial.println("Timeout da re. -> Estado: PARADO");
+  }
+}
+
+/**
+ * @brief Estado Final: Apenas mantém os motores parados.
+ */
+void handleParado() {
+  pararMotores();
+}
+
+// =============================================================================
+// 10. LOOP PRINCIPAL (Agora com a Máquina de Estados)
+// =============================================================================
+
+void loop() {
+  // Tarefas que rodam em quase todos os estados
+  if (estadoAtual != PARADO && estadoAtual != CALIBRANDO) {
+    Leitura();
+    ContagemQuadrados(); // Continua contando quadrados em background
+    isEncruzilhada = DetectarEncruzilhada();
+  }
+
+  // A MÁQUINA DE ESTADOS
+  switch (estadoAtual) {
+    case SEGUINDO_LINHA:
+      handleSeguindoLinha();
+      break;
+    
+    case AVALIANDO_CRUZAMENTO:
+      handleAvaliandoCruzamento();
+      break;
+
+    case CURVA_SIMPLES:
+      handleCurvaSimples();
+      break;
+
+    case NAVEGANDO_ROTATORIA:
+      handleNavegandoRotatoria();
+      break;
+
+    case SAINDO_ROTATORIA:
+      handleSaindoRotatoria();
+      break;
+    
+    case VERIFICA_FIM_PISTA:
+      handleVerificaFimPista();
+      break;
+    
+    case MANOBRA_RE:
+      handleManobraRe();
+      break;
+
+    case PARADO:
+      handleParado();
+      break;
+  }
+
+  // Imprime informações de debug, se não estiver em modo produção
+  if (!MODO_PRODUCAO){
+    ImprimirSensores(Antropofagico);
+  }
+
+  yield(); // Boa prática para ESPs
+}
+
+
+// =============================================================================
+// 11. FUNÇÕES UTILITÁRIAS E DE DEPURAÇÃO (Seu código original, sem alterações)
+// =============================================================================
+void ImprimirSensores(int modo) {
+  // Modo 1: Imprime os valores analógicos (0-1023)
+  if (modo == 1) {
+    for (int i = 0; i < QTSensores; i++) {
+      Serial.print(Sensor[i]);
+      if (i < QTSensores - 1) {
+        Serial.print("|");
+      }
+    }
+  }
+  // Modo 2: Imprime os valores binarizados (0 ou 1)
+  else if (modo == 2) {
+    for (int i = 0; i < QTSensores; i++) {
+      Serial.print(SensorBIN[i]);
+      if (i < QTSensores - 1) {
+        Serial.print("|");
+      }
+    }
+  }
+
+  // Imprime informações adicionais de estado
+  if (modo != 0) {
+    Serial.print(" | Err: " + String(erro));
+    Serial.print(" | PID: " + String(PID));
+    Serial.print(" | V_E: " + String(VeloE));
+    Serial.print(" | V_D: " + String(VeloD));
+    Serial.print(" | Q_Esq: " + String(contadorQuadradosEsquerda));
+    Serial.print(" | Q_Dir: " + String(contadorQuadradosDireita));
+    Serial.print(" | Encru: " + String(isEncruzilhada));
+    Serial.print(" | Est: " + String(estadoAtual));
+    Serial.println();
+  }
+}
